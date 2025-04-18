@@ -3,16 +3,18 @@
 #include <string.h>
 #include "database.h"
 #include "pin_validation.h"
+#include "card_num_validation.h" // Ensure this header file declares loadCredentials
 
 // Function prototypes
 void displayMenu();
 void handleUserChoice(int choice, float *balance, int *pin, int cardNumber);
-int loadCredentials(int cardNumber, int *pin, char *username);
 void savePIN(int cardNumber, int pin);
+int verifyPINWithAttempts(int pin, int maxAttempts);
+float fetchBalanceFromFile(int cardNumber);
 
 int main() {
     int choice;
-    float balance = 1000.0; // Initial balance
+    float balance;
     int cardNumber;
     int pin;
     char username[50]; // To store the username
@@ -26,6 +28,13 @@ int main() {
     // Load the credentials (PIN and username) for the entered card number
     if (!loadCredentials(cardNumber, &pin, username)) {
         printf("Card not found. Exiting...\n");
+        exit(0);
+    }
+
+    // Fetch the balance from the file
+    balance = fetchBalanceFromFile(cardNumber);
+    if (balance < 0) {
+        printf("Error: Unable to fetch balance. Exiting...\n");
         exit(0);
     }
 
@@ -58,27 +67,15 @@ int main() {
 
         if (choice == 5) {
             // Directly exit without PIN validation
-            exitATM();
+            exitATM(cardNumber);
         }
 
         // Require PIN validation before handling other menu options
-        attempts = 3; // Reset attempts for each menu option
-        while (attempts > 0) {
-            printf("Re-enter your PIN to proceed: ");
-            scanf("%d", &enteredPin);
-
-            if (validatePIN(enteredPin, pin)) {
-                handleUserChoice(choice, &balance, &pin, cardNumber);
-                break;
-            } else {
-                attempts--;
-                printf("Incorrect PIN. You have %d attempt(s) remaining.\n", attempts);
-            }
-
-            if (attempts == 0) {
-                printf("Access denied. Exiting...\n");
-                exit(0);
-            }
+        if (verifyPINWithAttempts(pin, 3)) {
+            handleUserChoice(choice, &balance, &pin, cardNumber); // Correctly closed parentheses
+        } else {
+            printf("Access denied. Exiting...\n");
+            exit(0);
         }
     }
 
@@ -96,12 +93,18 @@ void displayMenu() {
 }
 
 void handleUserChoice(int choice, float *balance, int *pin, int cardNumber) {
+    char username[50]; // Add this to fetch the username
+    if (!fetchUsername(cardNumber, username)) {
+        printf("Error: Unable to fetch username.\n");
+        return;
+    }
+
     switch (choice) {
         case 1:
             checkBalance(*balance);
             break;
         case 2:
-            *balance = depositMoney(*balance);
+            *balance = depositMoney(cardNumber, username); // Pass cardNumber and username
             break;
         case 3:
             *balance = withdrawMoney(*balance);
@@ -118,55 +121,40 @@ void handleUserChoice(int choice, float *balance, int *pin, int cardNumber) {
     }
 }
 
-// Function to load the credentials (PIN and username) for a specific card number
-int loadCredentials(int cardNumber, int *pin, char *username) {
-    FILE *file = fopen("data/credentials.txt", "r");
-    if (file == NULL) {
-        printf("Error: Unable to open credentials file.\n");
-        return 0;
-    }
+// Function to verify PIN with multiple attempts
+int verifyPINWithAttempts(int pin, int maxAttempts) {
+    int enteredPin;
+    while (maxAttempts > 0) {
+        printf("Re-enter your PIN to proceed: ");
+        scanf("%d", &enteredPin);
 
-    int storedCardNumber, storedPIN;
-    char storedUsername[50];
-    while (fscanf(file, "%d %d %s", &storedCardNumber, &storedPIN, storedUsername) != EOF) {
-        if (storedCardNumber == cardNumber) {
-            *pin = storedPIN;
-            strcpy(username, storedUsername); // Copy the username
-            fclose(file);
-            return 1; // Card found
+        if (validatePIN(enteredPin, pin)) {
+            return 1; // PIN verified successfully
+        } else {
+            maxAttempts--;
+            printf("Incorrect PIN. You have %d attempt(s) remaining.\n", maxAttempts);
         }
     }
-
-    fclose(file);
-    return 0; // Card not found
+    return 0; // PIN verification failed
 }
 
-// Function to save the PIN for a specific card number
-void savePIN(int cardNumber, int pin) {
-    FILE *file = fopen("data/credentials.txt", "r+");
+// Function to fetch the balance from accounting.txt
+float fetchBalanceFromFile(int cardNumber) {
+    FILE *file = fopen("../data/accounting.txt", "r");
     if (file == NULL) {
-        // If the file doesn't exist, create it
-        file = fopen("data/credentials.txt", "w");
-        if (file == NULL) {
-            printf("Error: Unable to save PIN.\n");
-            return;
-        }
+        printf("Error: Unable to open accounting file.\n");
+        return -1.0; // Indicate an error
     }
 
-    int storedCardNumber, storedPIN;
-    char storedUsername[50];
-    long position;
-    while ((position = ftell(file)) >= 0 && fscanf(file, "%d %d %s", &storedCardNumber, &storedPIN, storedUsername) != EOF) {
+    int storedCardNumber;
+    float storedBalance;
+    while (fscanf(file, "%d %f", &storedCardNumber, &storedBalance) != EOF) {
         if (storedCardNumber == cardNumber) {
-            // Update the PIN for the existing card number
-            fseek(file, position, SEEK_SET);
-            fprintf(file, "%d %d %s\n", cardNumber, pin, storedUsername);
             fclose(file);
-            return;
+            return storedBalance; // Return the balance for the card
         }
     }
 
-    // If the card number doesn't exist, append it to the file
-    fprintf(file, "%d %d %s\n", cardNumber, pin, "User"); // Default username if not found
     fclose(file);
+    return -1.0; // Card not found
 }

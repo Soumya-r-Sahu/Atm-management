@@ -10,19 +10,33 @@ void checkBalance(float balance) {
 }
 
 // Function to deposit money
-float depositMoney(float balance) {
+float depositMoney(int cardNumber, const char *username) {
     float amount;
     printf("Enter the amount to deposit: ");
     scanf("%f", &amount);
 
     if (amount > 0) {
+        float balance = fetchBalance(cardNumber);
+        if (balance == -1) {
+            printf("Error: Unable to fetch balance.\n");
+            return -1;
+        }
+
+        float oldBalance = balance;
         balance += amount;
-        printf("Successfully deposited $%.2f. New balance: $%.2f\n", amount, balance);
+        updateBalance(cardNumber, balance);
+        printf("Successfully deposited $%.2f. Available balance: $%.2f\n", amount, balance);
+
+        // Log the operation
+        char details[200];
+        snprintf(details, sizeof(details), "Deposited $%.2f | Old Balance: $%.2f | New Balance: $%.2f", amount, oldBalance, balance);
+        writeTransactionLog(username, "Deposit Money", details);
+
+        return balance;
     } else {
         printf("Invalid amount. Deposit failed.\n");
+        return -1;
     }
-
-    return balance;
 }
 
 // Function to withdraw money
@@ -61,16 +75,16 @@ void changePIN(int *pin) {
 void exitATM(int cardNumber) {
     char username[50];
     if (fetchUsername(cardNumber, username)) {
-        printf("Thank you %s for using the ATM Have a nice Day!\n", username);
+        printf("Thank you %s for using Our ATM service Have a nice Day!\n", username);
     } else {
-        printf("Thank you for using the ATM Have a nice Day!\n");
+        printf("Thank you for using Our ATM service Have a nice Day!\n");
     }
     exit(0);
 }
 
 // Helper function to fetch the username for a specific card number
 int fetchUsername(int cardNumber, char *username) {
-    FILE *file = fopen("data/credentials.txt", "r");
+    FILE *file = fopen("../data/credentials.txt", "r");
     if (file == NULL) {
         perror("Error opening credentials.txt");
         return 0;
@@ -92,10 +106,10 @@ int fetchUsername(int cardNumber, char *username) {
 
 // Function to save the PIN for a specific card number
 void savePIN(int cardNumber, int pin) {
-    FILE *file = fopen("data/credentials.txt", "r+");
+    FILE *file = fopen("../data/credentials.txt", "r+");
     if (file == NULL) {
         // If the file doesn't exist, create it
-        file = fopen("data/credentials.txt", "w");
+        file = fopen("../data/credentials.txt", "w");
         if (file == NULL) {
             printf("Error: Unable to save PIN.\n");
             return;
@@ -120,9 +134,60 @@ void savePIN(int cardNumber, int pin) {
     fclose(file);
 }
 
+// Function to fetch the balance for a specific card number
+float fetchBalance(int cardNumber) {
+    FILE *file = fopen("../data/accounting.txt", "r");
+    if (file == NULL) {
+        perror("Error opening accounting.txt");
+        return -1; // Return -1 to indicate an error
+    }
+
+    int storedCardNumber;
+    float storedBalance;
+    while (fscanf(file, "%d %f", &storedCardNumber, &storedBalance) != EOF) {
+        if (storedCardNumber == cardNumber) {
+            fclose(file);
+            return storedBalance; // Return the balance for the card number
+        }
+    }
+
+    fclose(file);
+    return -1; // Card number not found
+}
+
+// Function to update the balance for a specific card number
+void updateBalance(int cardNumber, float newBalance) {
+    FILE *file = fopen("../data/accounting.txt", "r+");
+    if (file == NULL) {
+        // If the file doesn't exist, create it
+        file = fopen("../data/accounting.txt", "w");
+        if (file == NULL) {
+            printf("Error: Unable to update balance.\n");
+            return;
+        }
+    }
+
+    int storedCardNumber;
+    float storedBalance;
+    long position;
+    while ((position = ftell(file)) >= 0 && fscanf(file, "%d %f", &storedCardNumber, &storedBalance) != EOF) {
+        if (storedCardNumber == cardNumber) {
+            // Update the balance for the existing card number
+            fseek(file, position, SEEK_SET);
+            fprintf(file, "%d %.2f\n", cardNumber, newBalance);
+            fclose(file);
+            return;
+        }
+    }
+
+    // If the card number doesn't exist, append it to the file
+    fprintf(file, "%d %.2f\n", cardNumber, newBalance);
+    fclose(file);
+}
+
 // Function to write a transaction log to the file
 void writeTransactionLog(const char *username, const char *operation, const char *details) {
-    FILE *file = fopen("data/transactions.log", "a");
+    FILE *file = fopen("../data/transactions.log", "a");
     if (file == NULL) {
         perror("Error opening transactions.log");
         return;
@@ -142,7 +207,7 @@ void writeTransactionLog(const char *username, const char *operation, const char
 // Function to read all transaction logs from the file
 void readTransactionLogs() {
     char line[256];
-    FILE *file = fopen("data/transactions.log", "r");
+    FILE *file = fopen("../data/transactions.log", "r");
     if (file == NULL) {
         perror("Unable to open transactions.log");
         return;

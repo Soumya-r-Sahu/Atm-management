@@ -4,8 +4,8 @@
 #include "pin_validation.h"
 
 // Function to validate the entered PIN against the stored PIN
-bool validatePIN(int enteredPin, int storedPin) {
-    return enteredPin == storedPin;
+int validatePIN(int enteredPin, int actualPin) {
+    return enteredPin == actualPin;
 }
 
 // Function to prompt the user for their PIN and validate it
