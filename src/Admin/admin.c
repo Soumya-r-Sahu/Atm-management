@@ -6,12 +6,18 @@
 #define ADMIN_ID "admin123"
 #define ADMIN_PASS "pass456"
 
+// Global variable to track the ATM service status
+int isOutOfService = 0; // 0 = Operational, 1 = Out of Service
+
+// Function prototypes
 void createAccount();
 int generateUniqueCardNumber();
 int generateRandomPin();
 int isCardNumberUnique(int cardNumber);
-void logAdminActivity(const char *activity); // Function prototype
-void initializeFiles(); // Function to initialize files with table headings
+void logAdminActivity(const char *activity);
+void initializeFiles();
+void toggleServiceMode();
+void clearScreen(); // Function to clear the terminal screen
 
 int main() {
     // Ensure the files are initialized
@@ -31,18 +37,26 @@ int main() {
 
         int choice;
         do {
+            clearScreen(); // Clear the terminal before displaying the menu
             printf("\nMenu:\n");
             printf("1. Create Account\n");
-            printf("2. Exit\n");
+            printf("2. Toggle Service Mode\n");
+            printf("3. Exit\n");
             printf("Enter your choice: ");
             scanf("%d", &choice);
 
             switch (choice) {
                 case 1:
+                    clearScreen(); // Clear the terminal before creating an account
                     createAccount();
                     logAdminActivity("Created a new account");
                     break;
                 case 2:
+                    clearScreen(); // Clear the terminal before toggling service mode
+                    toggleServiceMode();
+                    break;
+                case 3:
+                    clearScreen(); // Clear the terminal before exiting
                     printf("Exiting...\n");
                     logAdminActivity("Admin logged out");
                     break;
@@ -50,13 +64,22 @@ int main() {
                     printf("Invalid choice. Please try again.\n");
                     logAdminActivity("Invalid menu choice entered");
             }
-        } while (choice != 2);
+        } while (choice != 3);
     } else {
         printf("\nInvalid Admin ID or Password. Access Denied.\n");
         logAdminActivity("Failed admin login attempt");
     }
 
     return 0;
+}
+
+// Function to clear the terminal screen
+void clearScreen() {
+#ifdef _WIN32
+    system("cls"); // Windows-specific command to clear the screen
+#else
+    system("clear"); // Unix/Linux/Mac-specific command to clear the screen
+#endif
 }
 
 void initializeFiles() {
@@ -181,4 +204,28 @@ void logAdminActivity(const char *activity) {
             activity);
 
     fclose(logFile);
+}
+
+// Function to toggle the ATM service mode
+void toggleServiceMode() {
+    FILE *statusFile = fopen("../../data/status.txt", "w");
+    if (statusFile == NULL) {
+        printf("Error: Unable to open status.txt file.\n");
+        logAdminActivity("Error opening status.txt while toggling service mode");
+        return;
+    }
+
+    if (isOutOfService) {
+        isOutOfService = 0;
+        fprintf(statusFile, "Status: Online\n"); // Update status to online
+        printf("ATM is now operational.\n");
+        logAdminActivity("ATM service mode set to operational");
+    } else {
+        isOutOfService = 1;
+        fprintf(statusFile, "Status: Offline\n"); // Update status to offline
+        printf("ATM is now out of service.\n");
+        logAdminActivity("ATM service mode set to out of service");
+    }
+
+    fclose(statusFile);
 }
