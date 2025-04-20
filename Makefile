@@ -34,6 +34,8 @@ $(ADMIN_EXEC): $(ADMIN_OBJ)
 
 # Clean up
 clean:
-	rm -f $(MAIN_OBJ) $(MAIN_EXEC) $(ADMIN_OBJ) $(ADMIN_EXEC)
+	-del /f /q $(MAIN_OBJ) $(MAIN_EXEC) $(ADMIN_OBJ) $(ADMIN_EXEC) 2>nul
+	-if exist $(MAIN_EXEC) del /f /q $(MAIN_EXEC)
+	-if exist $(ADMIN_EXEC) del /f /q $(ADMIN_EXEC)
 
 .PHONY: all clean

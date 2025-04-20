@@ -1,21 +1,21 @@
 #ifndef DATABASE_H
 #define DATABASE_H
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-
-// Function declarations
 void checkBalance(float balance);
 float depositMoney(int cardNumber, const char *username);
-float withdrawMoney(float balance);
-void changePIN(int *pin);
+void withdrawMoney(float *balance, int cardNumber);
+void changePIN(int *pin); // Add this declaration
 void exitATM(int cardNumber);
 int fetchUsername(int cardNumber, char *username);
 void savePIN(int cardNumber, int pin);
-float fetchBalance(int cardNumber); // Add this declaration
-void updateBalance(int cardNumber, float newBalance); // Add this declaration
-void writeTransactionLog(const char *username, const char *operation, const char *details); // Add this declaration
+float fetchBalance(int cardNumber);
+float fetchBalanceFromFile(int cardNumber);
+void updateBalance(int cardNumber, float newBalance);
+void writeTransactionLog(const char *accountHolderName, const char *operation, const char *details);
 void readTransactionLogs();
+int fetchServiceStatus(); // Function to fetch the ATM service status from status.txt
+float getDailyWithdrawals(int cardNumber);
+void logWithdrawal(int cardNumber, float amount);
+void viewTransactionHistory(int cardNumber);
 
 #endif // DATABASE_H

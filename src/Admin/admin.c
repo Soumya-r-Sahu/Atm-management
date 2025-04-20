@@ -18,6 +18,7 @@ void logAdminActivity(const char *activity);
 void initializeFiles();
 void toggleServiceMode();
 void clearScreen(); // Function to clear the terminal screen
+void resetPIN(int cardNumber); // Function to reset PIN
 
 int main() {
     // Ensure the files are initialized
@@ -41,7 +42,8 @@ int main() {
             printf("\nMenu:\n");
             printf("1. Create Account\n");
             printf("2. Toggle Service Mode\n");
-            printf("3. Exit\n");
+            printf("3. Reset PIN\n");
+            printf("4. Exit\n");
             printf("Enter your choice: ");
             scanf("%d", &choice);
 
@@ -55,7 +57,16 @@ int main() {
                     clearScreen(); // Clear the terminal before toggling service mode
                     toggleServiceMode();
                     break;
-                case 3:
+                case 3: {
+                    clearScreen(); // Clear the terminal before resetting PIN
+                    int cardNumber;
+                    printf("Enter Card Number: ");
+                    scanf("%d", &cardNumber);
+                    resetPIN(cardNumber);
+                    logAdminActivity("PIN reset attempted");
+                    break;
+                }
+                case 4:
                     clearScreen(); // Clear the terminal before exiting
                     printf("Exiting...\n");
                     logAdminActivity("Admin logged out");
@@ -64,7 +75,7 @@ int main() {
                     printf("Invalid choice. Please try again.\n");
                     logAdminActivity("Invalid menu choice entered");
             }
-        } while (choice != 3);
+        } while (choice != 4);
     } else {
         printf("\nInvalid Admin ID or Password. Access Denied.\n");
         logAdminActivity("Failed admin login attempt");
@@ -228,4 +239,44 @@ void toggleServiceMode() {
     }
 
     fclose(statusFile);
+}
+
+// Function to reset PIN
+void resetPIN(int cardNumber) {
+    FILE *file = fopen("data/credentials.txt", "r+");
+    if (file == NULL) {
+        printf("Error: Unable to open credentials file.\n");
+        return;
+    }
+
+    FILE *tempFile = fopen("data/temp_credentials.txt", "w");
+    if (tempFile == NULL) {
+        printf("Error: Unable to create temporary file.\n");
+        fclose(file);
+        return;
+    }
+
+    int storedCardNumber, storedPIN;
+    char storedUsername[50];
+    int newPIN;
+
+    printf("Enter the new PIN for card number %d: ", cardNumber);
+    scanf("%d", &newPIN);
+
+    while (fscanf(file, "%49[^|] | %d | %d", storedUsername, &storedCardNumber, &storedPIN) == 3) {
+        if (storedCardNumber == cardNumber) {
+            fprintf(tempFile, "%-49s | %d | %d\n", storedUsername, storedCardNumber, newPIN);
+        } else {
+            fprintf(tempFile, "%-49s | %d | %d\n", storedUsername, storedCardNumber, storedPIN);
+        }
+    }
+
+    fclose(file);
+    fclose(tempFile);
+
+    // Replace the original file with the updated file
+    remove("data/credentials.txt");
+    rename("data/temp_credentials.txt", "data/credentials.txt");
+
+    printf("PIN reset successfully for card number %d.\n", cardNumber);
 }

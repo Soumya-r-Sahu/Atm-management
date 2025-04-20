@@ -10,14 +10,13 @@ void displayMenu();
 void handleUserChoice(int choice, float *balance, int *pin, int cardNumber);
 void savePIN(int cardNumber, int pin);
 int verifyPINWithAttempts(int pin, int maxAttempts);
-float fetchBalanceFromFile(int cardNumber);
 
 int main() {
     int choice;
     float balance;
     int cardNumber;
     int pin;
-    char username[50];
+    char accountHolderName[50];
     int enteredPin;
     int attempts = 3;
 
@@ -27,28 +26,31 @@ int main() {
 
         if (!isCardNumberValid(cardNumber)) {
             printf("Invalid card number. Please try again.\n");
+            while (getchar() != '\n'); // Clear the input buffer
             continue;
         }
 
-        if (!loadCredentials(cardNumber, &pin, username)) {
+        if (!loadCredentials(cardNumber, &pin, accountHolderName)) {
             printf("Card not found. Please try again.\n");
+            while (getchar() != '\n'); // Clear the input buffer
             continue;
         }
 
         balance = fetchBalanceFromFile(cardNumber);
         if (balance < 0) {
             printf("Error: Unable to fetch balance. Please try again.\n");
+            while (getchar() != '\n'); // Clear the input buffer
             continue;
         }
 
-        printf("Hello, %s! Please enter your PIN to proceed.\n", username);
+        printf("Hello, %s! Please enter your PIN to proceed.\n", accountHolderName);
 
         while (attempts > 0) {
             printf("Enter your PIN: ");
             scanf("%d", &enteredPin);
 
             if (validatePIN(enteredPin, pin)) {
-                printf("Welcome, %s!\n", username);
+                printf("Welcome, %s!\n", accountHolderName);
                 break;
             } else {
                 attempts--;
@@ -92,12 +94,13 @@ void displayMenu() {
     printf("3. Withdraw Money\n");
     printf("4. Change PIN\n");
     printf("5. Exit\n");
+    printf("6. View Transaction History\n");
     printf("=====================\n");
 }
 
 void handleUserChoice(int choice, float *balance, int *pin, int cardNumber) {
-    char username[50]; // Add this to fetch the username
-    if (!fetchUsername(cardNumber, username)) {
+    char accountHolderName[50]; // Add this to fetch the username
+    if (!fetchUsername(cardNumber, accountHolderName)) {
         printf("Error: Unable to fetch username.\n");
         return;
     }
@@ -107,10 +110,10 @@ void handleUserChoice(int choice, float *balance, int *pin, int cardNumber) {
             checkBalance(*balance);
             break;
         case 2:
-            *balance = depositMoney(cardNumber, username); // Pass cardNumber and username
+            *balance = depositMoney(cardNumber, accountHolderName); // Pass cardNumber and username
             break;
         case 3:
-            *balance = withdrawMoney(*balance);
+            withdrawMoney(balance, cardNumber);
             break;
         case 4:
             changePIN(pin);
@@ -118,6 +121,9 @@ void handleUserChoice(int choice, float *balance, int *pin, int cardNumber) {
             break;
         case 5:
             exitATM(cardNumber);
+            break;
+        case 6:
+            viewTransactionHistory(cardNumber);
             break;
         default:
             printf("Invalid choice! Please try again.\n");
@@ -139,25 +145,4 @@ int verifyPINWithAttempts(int pin, int maxAttempts) {
         }
     }
     return 0; // PIN verification failed
-}
-
-// Function to fetch the balance from accounting.txt
-float fetchBalanceFromFile(int cardNumber) {
-    FILE *file = fopen("../data/accounting.txt", "r");
-    if (file == NULL) {
-        printf("Error: Unable to open accounting file.\n");
-        return -1.0; // Indicate an error
-    }
-
-    int storedCardNumber;
-    float storedBalance;
-    while (fscanf(file, "%d %f", &storedCardNumber, &storedBalance) != EOF) {
-        if (storedCardNumber == cardNumber) {
-            fclose(file);
-            return storedBalance; // Return the balance for the card
-        }
-    }
-
-    fclose(file);
-    return -1.0; // Card not found
 }
