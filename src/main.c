@@ -17,65 +17,68 @@ int main() {
     float balance;
     int cardNumber;
     int pin;
-    char username[50]; // To store the username
+    char username[50];
     int enteredPin;
-    int attempts = 3; // Maximum attempts for PIN entry
-
-    // Prompt for card number
-    printf("Enter your card number: ");
-    scanf("%d", &cardNumber);
-
-    // Load the credentials (PIN and username) for the entered card number
-    if (!loadCredentials(cardNumber, &pin, username)) {
-        printf("Card not found. Exiting...\n");
-        exit(0);
-    }
-
-    // Fetch the balance from the file
-    balance = fetchBalanceFromFile(cardNumber);
-    if (balance < 0) {
-        printf("Error: Unable to fetch balance. Exiting...\n");
-        exit(0);
-    }
-
-    // Greet the user with their name
-    printf("Hello, %s! Please enter your PIN to proceed.\n", username);
-
-    // PIN verification
-    while (attempts > 0) {
-        printf("Enter your PIN: ");
-        scanf("%d", &enteredPin);
-
-        if (validatePIN(enteredPin, pin)) {
-            printf("Welcome, %s!\n", username); // Greet the user after successful PIN entry
-            break;
-        } else {
-            attempts--;
-            printf("Incorrect PIN. You have %d attempt(s) remaining.\n", attempts);
-        }
-
-        if (attempts == 0) {
-            printf("Access denied. Exiting...\n");
-            exit(0);
-        }
-    }
+    int attempts = 3;
 
     while (1) {
-        displayMenu();
-        printf("Enter your choice: ");
-        scanf("%d", &choice);
+        printf("Enter your card number: ");
+        scanf("%d", &cardNumber);
 
-        if (choice == 5) {
-            // Directly exit without PIN validation
-            exitATM(cardNumber);
+        if (!isCardNumberValid(cardNumber)) {
+            printf("Invalid card number. Please try again.\n");
+            continue;
         }
 
-        // Require PIN validation before handling other menu options
-        if (verifyPINWithAttempts(pin, 3)) {
-            handleUserChoice(choice, &balance, &pin, cardNumber); // Correctly closed parentheses
-        } else {
-            printf("Access denied. Exiting...\n");
-            exit(0);
+        if (!loadCredentials(cardNumber, &pin, username)) {
+            printf("Card not found. Please try again.\n");
+            continue;
+        }
+
+        balance = fetchBalanceFromFile(cardNumber);
+        if (balance < 0) {
+            printf("Error: Unable to fetch balance. Please try again.\n");
+            continue;
+        }
+
+        printf("Hello, %s! Please enter your PIN to proceed.\n", username);
+
+        while (attempts > 0) {
+            printf("Enter your PIN: ");
+            scanf("%d", &enteredPin);
+
+            if (validatePIN(enteredPin, pin)) {
+                printf("Welcome, %s!\n", username);
+                break;
+            } else {
+                attempts--;
+                printf("Incorrect PIN. You have %d attempt(s) remaining.\n", attempts);
+            }
+
+            if (attempts == 0) {
+                printf("Access denied. Returning to card entry...\n");
+                break;
+            }
+        }
+
+        if (attempts > 0) {
+            while (1) {
+                displayMenu();
+                printf("Enter your choice: ");
+                scanf("%d", &choice);
+
+                if (choice == 5) {
+                    exitATM(cardNumber);
+                    break;
+                }
+
+                if (verifyPINWithAttempts(pin, 3)) {
+                    handleUserChoice(choice, &balance, &pin, cardNumber);
+                } else {
+                    printf("Access denied. Returning to card entry...\n");
+                    break;
+                }
+            }
         }
     }
 

@@ -138,51 +138,72 @@ void savePIN(int cardNumber, int pin) {
 float fetchBalance(int cardNumber) {
     FILE *file = fopen("../data/accounting.txt", "r");
     if (file == NULL) {
-        perror("Error opening accounting.txt");
-        return -1; // Return -1 to indicate an error
+        printf("Error: Unable to open accounting file.\n");
+        return -1.0; // Indicate an error
     }
+
+    char line[256];
+    // Skip the header lines
+    fgets(line, sizeof(line), file); // Skip the first line (column names)
+    fgets(line, sizeof(line), file); // Skip the second line (separator)
 
     int storedCardNumber;
     float storedBalance;
-    while (fscanf(file, "%d %f", &storedCardNumber, &storedBalance) != EOF) {
+    while (fscanf(file, "%d | %f", &storedCardNumber, &storedBalance) != EOF) {
         if (storedCardNumber == cardNumber) {
             fclose(file);
-            return storedBalance; // Return the balance for the card number
+            return storedBalance; // Return the balance for the card
         }
     }
 
     fclose(file);
-    return -1; // Card number not found
+    return -1.0; // Card not found
 }
 
 // Function to update the balance for a specific card number
 void updateBalance(int cardNumber, float newBalance) {
     FILE *file = fopen("../data/accounting.txt", "r+");
     if (file == NULL) {
-        // If the file doesn't exist, create it
-        file = fopen("../data/accounting.txt", "w");
-        if (file == NULL) {
-            printf("Error: Unable to update balance.\n");
-            return;
-        }
+        printf("Error: Unable to open accounting file.\n");
+        return;
     }
+
+    char line[256];
+    FILE *tempFile = fopen("../data/temp_accounting.txt", "w");
+    if (tempFile == NULL) {
+        printf("Error: Unable to create temporary file.\n");
+        fclose(file);
+        return;
+    }
+
+    // Copy the header lines to the temporary file
+    fgets(line, sizeof(line), file);
+    fputs(line, tempFile);
+    fgets(line, sizeof(line), file);
+    fputs(line, tempFile);
 
     int storedCardNumber;
     float storedBalance;
-    long position;
-    while ((position = ftell(file)) >= 0 && fscanf(file, "%d %f", &storedCardNumber, &storedBalance) != EOF) {
+    int found = 0;
+    while (fscanf(file, "%d | %f", &storedCardNumber, &storedBalance) != EOF) {
         if (storedCardNumber == cardNumber) {
-            // Update the balance for the existing card number
-            fseek(file, position, SEEK_SET);
-            fprintf(file, "%d %.2f\n", cardNumber, newBalance);
-            fclose(file);
-            return;
+            fprintf(tempFile, "%d | %.2f\n", cardNumber, newBalance);
+            found = 1;
+        } else {
+            fprintf(tempFile, "%d | %.2f\n", storedCardNumber, storedBalance);
         }
     }
 
-    // If the card number doesn't exist, append it to the file
-    fprintf(file, "%d %.2f\n", cardNumber, newBalance);
+    if (!found) {
+        fprintf(tempFile, "%d | %.2f\n", cardNumber, newBalance);
+    }
+
     fclose(file);
+    fclose(tempFile);
+
+    // Replace the original file with the updated file
+    remove("../data/accounting.txt");
+    rename("../data/temp_accounting.txt", "../data/accounting.txt");
 }
 
 // Function to write a transaction log to the file
