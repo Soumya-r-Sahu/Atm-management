@@ -3,10 +3,16 @@
 #include <stdlib.h>
 #include <time.h>
 
+// ============================
+// Logging Utilities
+// ============================
+
+// Function to log a message to the console
 void logToConsole(const char *message) {
     printf("%s\n", message);
 }
 
+// Function to log a message to a file
 void logToFile(const char *message, const char *sourceFile) {
     // Exclude logging activities from `admin.c`
     if (strcmp(sourceFile, "admin.c") == 0) {

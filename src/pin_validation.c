@@ -3,6 +3,10 @@
 #include <stdbool.h> // Include for the bool type
 #include "pin_validation.h"
 
+// ============================
+// PIN Validation
+// ============================
+
 // Function to validate the entered PIN against the stored PIN
 int validatePIN(int enteredPin, int actualPin) {
     return enteredPin == actualPin;

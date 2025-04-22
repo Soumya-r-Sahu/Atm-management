@@ -1,9 +1,13 @@
-
 // filepath: src/card_num_validation.c
 #include "card_num_validation.h"
 #include <stdio.h>
 #include <string.h>
 
+// ============================
+// Card Number Validation
+// ============================
+
+// Function to load credentials for a given card number
 int loadCredentials(int cardNumber, int *pin, char *accountHolderName) {
     FILE *file = fopen("data/credentials.txt", "r");
     if (file == NULL) {
@@ -31,6 +35,7 @@ int loadCredentials(int cardNumber, int *pin, char *accountHolderName) {
     return 0; // Card not found
 }
 
+// Function to validate if a card number exists
 int isCardNumberValid(int cardNumber) {
     FILE *file = fopen("data/credentials.txt", "r");
     if (file == NULL) {

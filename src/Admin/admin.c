@@ -6,10 +6,14 @@
 #define ADMIN_ID "admin123"
 #define ADMIN_PASS "pass456"
 
-// Global variable to track the ATM service status
+// ============================
+// Global Variables
+// ============================
 int isOutOfService = 0; // 0 = Operational, 1 = Out of Service
 
-// Function prototypes
+// ============================
+// Function Prototypes
+// ============================
 void createAccount();
 int generateUniqueCardNumber();
 int generateRandomPin();
@@ -17,11 +21,13 @@ int isCardNumberUnique(int cardNumber);
 void logAdminActivity(const char *activity);
 void initializeFiles();
 void toggleServiceMode();
-void clearScreen(); // Function to clear the terminal screen
-void resetPIN(int cardNumber); // Function to reset PIN
+void clearScreen();
+void resetPIN(int cardNumber);
 
+// ============================
+// Main Function
+// ============================
 int main() {
-    // Ensure the files are initialized
     initializeFiles();
 
     char adminId[50], adminPass[50];
@@ -38,7 +44,7 @@ int main() {
 
         int choice;
         do {
-            clearScreen(); // Clear the terminal before displaying the menu
+            clearScreen();
             printf("\nMenu:\n");
             printf("1. Create Account\n");
             printf("2. Toggle Service Mode\n");
@@ -49,16 +55,16 @@ int main() {
 
             switch (choice) {
                 case 1:
-                    clearScreen(); // Clear the terminal before creating an account
+                    clearScreen();
                     createAccount();
                     logAdminActivity("Created a new account");
                     break;
                 case 2:
-                    clearScreen(); // Clear the terminal before toggling service mode
+                    clearScreen();
                     toggleServiceMode();
                     break;
                 case 3: {
-                    clearScreen(); // Clear the terminal before resetting PIN
+                    clearScreen();
                     int cardNumber;
                     printf("Enter Card Number: ");
                     scanf("%d", &cardNumber);
@@ -67,7 +73,7 @@ int main() {
                     break;
                 }
                 case 4:
-                    clearScreen(); // Clear the terminal before exiting
+                    clearScreen();
                     printf("Exiting...\n");
                     logAdminActivity("Admin logged out");
                     break;
@@ -84,12 +90,16 @@ int main() {
     return 0;
 }
 
+// ============================
+// Utility Functions
+// ============================
+
 // Function to clear the terminal screen
 void clearScreen() {
 #ifdef _WIN32
-    system("cls"); // Windows-specific command to clear the screen
+    system("cls");
 #else
-    system("clear"); // Unix/Linux/Mac-specific command to clear the screen
+    system("clear");
 #endif
 }
 

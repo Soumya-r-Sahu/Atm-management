@@ -24,6 +24,10 @@ int fetchServiceStatus() {
     return 0; // ATM is operational
 }
 
+// ============================
+// Core ATM Functionality
+// ============================
+
 // Function to check the balance
 void checkBalance(float balance) {
     printf("Your current balance is: $%.2f\n", balance);
@@ -113,67 +117,52 @@ void exitATM(int cardNumber) {
     exit(0); // Properly exit the program
 }
 
-// Helper function to fetch the username for a specific card number
-int fetchUsername(int cardNumber, char *accountHolderName) {
-    FILE *file = fopen("data/credentials.txt", "r");
+// ============================
+// Logging and Transaction History
+// ============================
+
+// Function to write a transaction log to the file
+void writeTransactionLog(const char *accountHolderName, const char *operation, const char *details) {
+    FILE *file = fopen("data/transactions.log", "a");
     if (file == NULL) {
-        perror("Error opening credentials.txt");
-        return 0;
-    }
-
-    int storedCardNumber, storedPIN;
-    char storedUsername[50];
-    while (fscanf(file, "%d %d %s", &storedCardNumber, &storedPIN, storedUsername) != EOF) {
-        if (storedCardNumber == cardNumber) {
-            strcpy(accountHolderName, storedUsername);
-            fclose(file);
-            return 1; // Username found
-        }
-    }
-
-    fclose(file);
-    return 0; // Username not found
-}
-
-// Function to save the PIN for a specific card number
-void savePIN(int cardNumber, int pin) {
-    FILE *file = fopen("data/credentials.txt", "r");
-    if (file == NULL) {
-        printf("Error: Unable to open credentials file.\n");
+        printf("Error: Unable to open transactions log file.\n");
         return;
     }
 
-    FILE *tempFile = fopen("data/temp_credentials.txt", "w");
-    if (tempFile == NULL) {
-        printf("Error: Unable to create temporary file.\n");
-        fclose(file);
+    time_t now = time(NULL);
+    struct tm *localTime = localtime(&now);
+    char timestamp[100];
+    strftime(timestamp, sizeof(timestamp), "%Y-%m-%d %H:%M:%S", localTime);
+
+    fprintf(file, "[%s] Account Holder: %s | Operation: %s | Details: %s\n",
+            timestamp, accountHolderName, operation, details);
+    fclose(file);
+}
+
+// Function to view transaction history for a specific card number
+void viewTransactionHistory(int cardNumber) {
+    FILE *file = fopen("data/transactions.log", "r");
+    if (file == NULL) {
+        printf("Error: Unable to open transactions log file.\n");
         return;
     }
 
     char line[256];
-    // Copy the header lines to the temporary file
-    fgets(line, sizeof(line), file);
-    fputs(line, tempFile);
-    fgets(line, sizeof(line), file);
-    fputs(line, tempFile);
+    char cardStr[20];
+    sprintf(cardStr, "%d", cardNumber);
 
-    int storedCardNumber, storedPIN;
-    char storedUsername[50];
-    while (fscanf(file, "%20s | %d | %d", storedUsername, &storedCardNumber, &storedPIN) != EOF) {
-        if (storedCardNumber == cardNumber) {
-            fprintf(tempFile, "%-20s | %-11d | %-4d\n", storedUsername, cardNumber, pin);
-        } else {
-            fprintf(tempFile, "%-20s | %-11d | %-4d\n", storedUsername, storedCardNumber, storedPIN);
+    printf("\nTransaction History for Card Number %d:\n", cardNumber);
+    while (fgets(line, sizeof(line), file)) {
+        if (strstr(line, cardStr)) {
+            printf("%s", line);
         }
     }
-
     fclose(file);
-    fclose(tempFile);
-
-    // Replace the original file with the updated file
-    remove("data/credentials.txt");
-    rename("data/temp_credentials.txt", "data/credentials.txt");
 }
+
+// ============================
+// File Operations and Helpers
+// ============================
 
 // Function to fetch the balance for a specific card number
 float fetchBalance(int cardNumber) {
@@ -184,34 +173,9 @@ float fetchBalance(int cardNumber) {
     }
 
     char line[256];
-    // Skip the header lines
-    fgets(line, sizeof(line), file); // Skip the first line (column names)
-    fgets(line, sizeof(line), file); // Skip the second line (separator)
-
     int storedCardNumber;
     float storedBalance;
     while (fscanf(file, "%d | %f", &storedCardNumber, &storedBalance) != EOF) {
-        if (storedCardNumber == cardNumber) {
-            fclose(file);
-            return storedBalance; // Return the balance for the card
-        }
-    }
-
-    fclose(file);
-    return -1.0; // Card not found
-}
-
-// Function to fetch the balance for a specific card number from file
-float fetchBalanceFromFile(int cardNumber) {
-    FILE *file = fopen("data/accounting.txt", "r");
-    if (file == NULL) {
-        printf("Error: Unable to open accounting file.\n");
-        return -1.0; // Indicate an error
-    }
-
-    int storedCardNumber;
-    float storedBalance;
-    while (fscanf(file, "%d %f", &storedCardNumber, &storedBalance) != EOF) {
         if (storedCardNumber == cardNumber) {
             fclose(file);
             return storedBalance; // Return the balance for the card
@@ -238,12 +202,6 @@ void updateBalance(int cardNumber, float newBalance) {
         return;
     }
 
-    // Copy the header lines to the temporary file
-    fgets(line, sizeof(line), file);
-    fputs(line, tempFile);
-    fgets(line, sizeof(line), file);
-    fputs(line, tempFile);
-
     int storedCardNumber;
     float storedBalance;
     int found = 0;
@@ -268,57 +226,18 @@ void updateBalance(int cardNumber, float newBalance) {
     rename("data/temp_accounting.txt", "data/accounting.txt");
 }
 
-// Function to write a transaction log to the file
-void writeTransactionLog(const char *accountHolderName, const char *operation, const char *details) {
-    FILE *file = fopen("data/transactions.log", "a");
+// Function to log a withdrawal for a specific card number
+void logWithdrawal(int cardNumber, float amount) {
+    FILE *file = fopen("data/withdrawals.log", "a");
     if (file == NULL) {
-        printf("Error: Unable to open transactions log file.\n");
+        printf("Error: Unable to log withdrawal.\n");
         return;
     }
 
     time_t now = time(NULL);
-    struct tm *localTime = localtime(&now);
-    char timestamp[100];
-    strftime(timestamp, sizeof(timestamp), "%Y-%m-%d %H:%M:%S", localTime);
+    struct tm *today = localtime(&now);
 
-    fprintf(file, "[%s] Account Holder: %s | Operation: %s | Details: %s\n",
-            timestamp, accountHolderName, operation, details);
-    fclose(file);
-}
-
-// Function to read all transaction logs from the file
-void readTransactionLogs() {
-    char line[256];
-    FILE *file = fopen("data/transactions.log", "r");
-    if (file == NULL) {
-        perror("Unable to open transactions.log");
-        return;
-    }
-    printf("\nTransaction Logs:\n");
-    while (fgets(line, sizeof(line), file)) {
-        printf("%s", line);
-    }
-    fclose(file);
-}
-
-// Function to view transaction history for a specific card number
-void viewTransactionHistory(int cardNumber) {
-    FILE *file = fopen("data/transactions.log", "r");
-    if (file == NULL) {
-        printf("Error: Unable to open transactions log file.\n");
-        return;
-    }
-
-    char line[256];
-    char cardStr[20];
-    sprintf(cardStr, "%d", cardNumber);
-
-    printf("\nTransaction History for Card Number %d:\n", cardNumber);
-    while (fgets(line, sizeof(line), file)) {
-        if (strstr(line, cardStr)) {
-            printf("%s", line);
-        }
-    }
+    fprintf(file, "%d | %.2f | %d-%d-%d\n", cardNumber, amount, today->tm_mday, today->tm_mon + 1, today->tm_year + 1900);
     fclose(file);
 }
 
@@ -349,17 +268,24 @@ float getDailyWithdrawals(int cardNumber) {
     return total;
 }
 
-// Function to log a withdrawal for a specific card number
-void logWithdrawal(int cardNumber, float amount) {
-    FILE *file = fopen("data/withdrawals.log", "a");
+// Helper function to fetch the username for a specific card number
+int fetchUsername(int cardNumber, char *accountHolderName) {
+    FILE *file = fopen("data/credentials.txt", "r");
     if (file == NULL) {
-        printf("Error: Unable to log withdrawal.\n");
-        return;
+        perror("Error opening credentials.txt");
+        return 0;
     }
 
-    time_t now = time(NULL);
-    struct tm *today = localtime(&now);
+    int storedCardNumber, storedPIN;
+    char storedUsername[50];
+    while (fscanf(file, "%d %d %s", &storedCardNumber, &storedPIN, storedUsername) != EOF) {
+        if (storedCardNumber == cardNumber) {
+            strcpy(accountHolderName, storedUsername);
+            fclose(file);
+            return 1; // Username found
+        }
+    }
 
-    fprintf(file, "%d | %.2f | %d-%d-%d\n", cardNumber, amount, today->tm_mday, today->tm_mon + 1, today->tm_year + 1900);
     fclose(file);
+    return 0; // Username not found
 }

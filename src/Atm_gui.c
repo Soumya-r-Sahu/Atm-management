@@ -107,7 +107,7 @@ void AddControls(HWND hWnd) {
 void HandleNumpadInput(HWND hWnd, int value) {
     if (wcslen(inputBuffer) < 19) { // Ensure the buffer doesn't overflow
         wchar_t num[2];
-        swprintf(num, 2, L"%d", value);
+        swprintf(num, sizeof(num) / sizeof(wchar_t), L"%d", value); // Corrected usage
         wcscat(inputBuffer, num); // Append the pressed number to the buffer
         UpdateDisplay(inputBuffer);
         wprintf(L"Numpad Input: %s\n", inputBuffer);
@@ -140,15 +140,15 @@ void HandleOkButton() {
 }
 
 void HandleLeftButton(int id) {
-    wchar_t message[20];
-    swprintf(message, 20, L"Left Button %d pressed", id - ID_LB1 + 1);
+    wchar_t message[50]; // Increased buffer size to avoid overflow
+    swprintf(message, sizeof(message) / sizeof(wchar_t), L"Left Button %d pressed", id - ID_LB1 + 1); // Corrected usage
     UpdateDisplay(message);
     wprintf(L"%s\n", message);
 }
 
 void HandleRightButton(int id) {
-    wchar_t message[20];
-    swprintf(message, 20, L"Right Button %d pressed", id - ID_RB1 + 1);
+    wchar_t message[50]; // Increased buffer size to avoid overflow
+    swprintf(message, sizeof(message) / sizeof(wchar_t), L"Right Button %d pressed", id - ID_RB1 + 1); // Corrected usage
     UpdateDisplay(message);
     wprintf(L"%s\n", message);
 }
@@ -183,7 +183,8 @@ LRESULT CALLBACK WindowProcedure(HWND hWnd, UINT msg, WPARAM wp, LPARAM lp) {
             }
             break;
         case WM_DESTROY:
-            PostQuitMessage(0);
+            // Prevent the application from exiting
+            MessageBoxW(hWnd, L"The application cannot be closed.", L"Info", MB_OK | MB_ICONINFORMATION);
             break;
         default:
             return DefWindowProcW(hWnd, msg, wp, lp);
