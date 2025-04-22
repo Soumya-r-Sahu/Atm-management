@@ -59,17 +59,18 @@ int main() {
         }
 
         if (attempts > 0) {
-            while (1) {
+            int exitMenu = 0; // Flag to exit the menu loop
+            while (!exitMenu) {
                 displayMenu();
                 printf("Enter your choice: ");
                 scanf("%d", &choice);
 
                 if (choice == 5) {
                     exitATM(cardNumber);
-                    break;
+                    exitMenu = 1; // Exit the menu loop
+                } else {
+                    handleUserChoice(choice, &balance, &pin, cardNumber);
                 }
-
-                handleUserChoice(choice, &balance, &pin, cardNumber);
             }
         }
     }
@@ -102,14 +103,11 @@ void handleUserChoice(int choice, float *balance, int *pin, int cardNumber) {
             *balance = depositMoney(cardNumber, username);
             break;
         case 3:
-            withdrawMoney(balance, cardNumber); // Updated to match the correct signature
+            withdrawMoney(balance, cardNumber); // Pass the pointer to balance
             break;
         case 4:
             changePIN(pin);
             savePIN(cardNumber, *pin);
-            break;
-        case 5:
-            exitATM(cardNumber);
             break;
         default:
             printf("Invalid choice! Please try again.\n");
