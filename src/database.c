@@ -289,3 +289,11 @@ int fetchUsername(int cardNumber, char *accountHolderName) {
     fclose(file);
     return 0; // Username not found
 }
+
+// Encrypt or decrypt a string using XOR encryption
+void xorEncryptDecrypt(char *data, const char *key) {
+    size_t keyLen = strlen(key);
+    for (size_t i = 0; i < strlen(data); i++) {
+        data[i] ^= key[i % keyLen];
+    }
+}
