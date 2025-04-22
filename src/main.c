@@ -3,20 +3,18 @@
 #include <string.h>
 #include "database.h"
 #include "pin_validation.h"
-#include "card_num_validation.h" // Ensure this header file declares loadCredentials
+#include "card_num_validation.h"
 
 // Function prototypes
 void displayMenu();
 void handleUserChoice(int choice, float *balance, int *pin, int cardNumber);
-void savePIN(int cardNumber, int pin);
-int verifyPINWithAttempts(int pin, int maxAttempts);
 
 int main() {
     int choice;
     float balance;
     int cardNumber;
     int pin;
-    char accountHolderName[50];
+    char username[50];
     int enteredPin;
     int attempts = 3;
 
@@ -26,31 +24,28 @@ int main() {
 
         if (!isCardNumberValid(cardNumber)) {
             printf("Invalid card number. Please try again.\n");
-            while (getchar() != '\n'); // Clear the input buffer
             continue;
         }
 
-        if (!loadCredentials(cardNumber, &pin, accountHolderName)) {
+        if (!loadCredentials(cardNumber, &pin, username)) {
             printf("Card not found. Please try again.\n");
-            while (getchar() != '\n'); // Clear the input buffer
             continue;
         }
 
-        balance = fetchBalanceFromFile(cardNumber);
+        balance = fetchBalance(cardNumber);
         if (balance < 0) {
             printf("Error: Unable to fetch balance. Please try again.\n");
-            while (getchar() != '\n'); // Clear the input buffer
             continue;
         }
 
-        printf("Hello, %s! Please enter your PIN to proceed.\n", accountHolderName);
+        printf("Hello, %s! Please enter your PIN to proceed.\n", username);
 
         while (attempts > 0) {
             printf("Enter your PIN: ");
             scanf("%d", &enteredPin);
 
             if (validatePIN(enteredPin, pin)) {
-                printf("Welcome, %s!\n", accountHolderName);
+                printf("Welcome, %s!\n", username);
                 break;
             } else {
                 attempts--;
@@ -74,12 +69,7 @@ int main() {
                     break;
                 }
 
-                if (verifyPINWithAttempts(pin, 3)) {
-                    handleUserChoice(choice, &balance, &pin, cardNumber);
-                } else {
-                    printf("Access denied. Returning to card entry...\n");
-                    break;
-                }
+                handleUserChoice(choice, &balance, &pin, cardNumber);
             }
         }
     }
@@ -94,13 +84,12 @@ void displayMenu() {
     printf("3. Withdraw Money\n");
     printf("4. Change PIN\n");
     printf("5. Exit\n");
-    printf("6. View Transaction History\n");
     printf("=====================\n");
 }
 
 void handleUserChoice(int choice, float *balance, int *pin, int cardNumber) {
-    char accountHolderName[50]; // Add this to fetch the username
-    if (!fetchUsername(cardNumber, accountHolderName)) {
+    char username[50];
+    if (!fetchUsername(cardNumber, username)) {
         printf("Error: Unable to fetch username.\n");
         return;
     }
@@ -110,39 +99,20 @@ void handleUserChoice(int choice, float *balance, int *pin, int cardNumber) {
             checkBalance(*balance);
             break;
         case 2:
-            *balance = depositMoney(cardNumber, accountHolderName); // Pass cardNumber and username
+            *balance = depositMoney(cardNumber, username);
             break;
         case 3:
-            withdrawMoney(balance, cardNumber);
+            withdrawMoney(balance, cardNumber); // Updated to match the correct signature
             break;
         case 4:
             changePIN(pin);
-            savePIN(cardNumber, *pin); // Save the updated PIN for the card number
+            savePIN(cardNumber, *pin);
             break;
         case 5:
             exitATM(cardNumber);
-            break;
-        case 6:
-            viewTransactionHistory(cardNumber);
             break;
         default:
             printf("Invalid choice! Please try again.\n");
     }
 }
 
-// Function to verify PIN with multiple attempts
-int verifyPINWithAttempts(int pin, int maxAttempts) {
-    int enteredPin;
-    while (maxAttempts > 0) {
-        printf("Re-enter your PIN to proceed: ");
-        scanf("%d", &enteredPin);
-
-        if (validatePIN(enteredPin, pin)) {
-            return 1; // PIN verified successfully
-        } else {
-            maxAttempts--;
-            printf("Incorrect PIN. You have %d attempt(s) remaining.\n", maxAttempts);
-        }
-    }
-    return 0; // PIN verification failed
-}
