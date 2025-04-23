@@ -3,12 +3,13 @@
 #include <string.h>
 #include <time.h>
 #include "database.h"
+#include "utils/logger.h"
 
 // Function to fetch the ATM service status from status.txt
 int fetchServiceStatus() {
     FILE *file = fopen("data/status.txt", "r");
     if (file == NULL) {
-        printf("Error: Unable to open status.txt file.\n");
+        printf("Error: Unable to fetch ATM service status. Error Code: 501\n");
         return 0; // Default to operational if the file cannot be read
     }
 
@@ -168,11 +169,11 @@ void viewTransactionHistory(int cardNumber) {
 float fetchBalance(int cardNumber) {
     FILE *file = fopen("data/accounting.txt", "r");
     if (file == NULL) {
-        printf("Error: Unable to open accounting file.\n");
+        printf("Error: Unable to fetch balance. Error Code: 502\n");
+        logError("Failed to open accounting.txt while fetching balance.");
         return -1.0; // Indicate an error
     }
 
-    char line[256];
     int storedCardNumber;
     float storedBalance;
     while (fscanf(file, "%d | %f", &storedCardNumber, &storedBalance) != EOF) {
@@ -188,16 +189,17 @@ float fetchBalance(int cardNumber) {
 
 // Function to update the balance for a specific card number
 void updateBalance(int cardNumber, float newBalance) {
-    FILE *file = fopen("data/accounting.txt", "r+");
+    FILE *file = fopen("data/accounting.txt", "r");
     if (file == NULL) {
-        printf("Error: Unable to open accounting file.\n");
+        printf("Error: Unable to update balance. Error Code: 503\n");
+        logError("Failed to open accounting.txt while updating balance.");
         return;
     }
 
-    char line[256];
     FILE *tempFile = fopen("data/temp_accounting.txt", "w");
     if (tempFile == NULL) {
-        printf("Error: Unable to create temporary file.\n");
+        printf("Error: Unable to update balance. Error Code: 504\n");
+        logError("Failed to create temporary file while updating balance.");
         fclose(file);
         return;
     }
@@ -222,13 +224,15 @@ void updateBalance(int cardNumber, float newBalance) {
     fclose(tempFile);
 
     // Replace the original file with the updated file
-    remove("data/accounting.txt");
-    rename("data/temp_accounting.txt", "data/accounting.txt");
+    if (remove("data/accounting.txt") != 0 || rename("data/temp_accounting.txt", "data/accounting.txt") != 0) {
+        printf("Error: Unable to update balance. Error Code: 505\n");
+        logError("Failed to replace accounting.txt with updated file while updating balance.");
+    }
 }
 
 // Function to log a withdrawal for a specific card number
 void logWithdrawal(int cardNumber, float amount) {
-    FILE *file = fopen("data/withdrawals.log", "a");
+    FILE *file = fopen("logs/withdrawals.log", "a");
     if (file == NULL) {
         printf("Error: Unable to log withdrawal.\n");
         return;
@@ -243,7 +247,7 @@ void logWithdrawal(int cardNumber, float amount) {
 
 // Function to get the total daily withdrawals for a specific card number
 float getDailyWithdrawals(int cardNumber) {
-    FILE *file = fopen("data/withdrawals.log", "r");
+    FILE *file = fopen("logs/withdrawals.log", "r");
     if (file == NULL) {
         return 0.0; // No withdrawals yet
     }
@@ -272,7 +276,7 @@ float getDailyWithdrawals(int cardNumber) {
 int fetchUsername(int cardNumber, char *accountHolderName) {
     FILE *file = fopen("data/credentials.txt", "r");
     if (file == NULL) {
-        perror("Error opening credentials.txt");
+        printf("Error opening credentials.txt");
         return 0;
     }
 
@@ -290,10 +294,95 @@ int fetchUsername(int cardNumber, char *accountHolderName) {
     return 0; // Username not found
 }
 
-// Encrypt or decrypt a string using XOR encryption
-void xorEncryptDecrypt(char *data, const char *key) {
-    size_t keyLen = strlen(key);
-    for (size_t i = 0; i < strlen(data); i++) {
-        data[i] ^= key[i % keyLen];
+// Function to update the account status in credentials.txt
+void updateAccountStatus(int cardNumber, const char *status) {
+    FILE *file = fopen("data/credentials.txt", "r");
+    if (file == NULL) {
+        printf("Error: Unable to update account status. Error Code: 506\n");
+        logError("Failed to open credentials.txt while updating account status.");
+        return;
+    }
+
+    FILE *tempFile = fopen("data/temp_credentials.txt", "w");
+    if (tempFile == NULL) {
+        printf("Error: Unable to update account status. Error Code: 507\n");
+        logError("Failed to create temporary file while updating account status.");
+        fclose(file);
+        return;
+    }
+
+    char line[256];
+    int storedCardNumber, storedPIN;
+    char storedUsername[50], storedStatus[10];
+
+    // Write the header lines
+    fgets(line, sizeof(line), file);
+    fprintf(tempFile, "%s", line);
+    fgets(line, sizeof(line), file);
+    fprintf(tempFile, "%s", line);
+
+    // Update the status for the matching card number
+    while (fscanf(file, "%49[^|] | %d | %d | %9s", storedUsername, &storedCardNumber, &storedPIN, storedStatus) == 4) {
+        if (storedCardNumber == cardNumber) {
+            fprintf(tempFile, "%-20s | %-11d | %-4d | %-9s\n", storedUsername, storedCardNumber, storedPIN, status);
+        } else {
+            fprintf(tempFile, "%-20s | %-11d | %-4d | %-9s\n", storedUsername, storedCardNumber, storedPIN, storedStatus);
+        }
+    }
+
+    fclose(file);
+    fclose(tempFile);
+
+    // Replace the original file with the updated file
+    if (remove("data/credentials.txt") != 0 || rename("data/temp_credentials.txt", "data/credentials.txt") != 0) {
+        printf("Error: Unable to update account status. Error Code: 508\n");
+        logError("Failed to replace credentials.txt with updated file while updating account status.");
     }
 }
+
+// Function to save the updated PIN for a specific card number
+void savePIN(int cardNumber, int newPIN) {
+    FILE *file = fopen("data/credentials.txt", "r");
+    if (file == NULL) {
+        printf("Error: Unable to save PIN. Error Code: 509\n");
+        logError("Failed to open credentials.txt while saving PIN.");
+        return;
+    }
+
+    FILE *tempFile = fopen("data/temp_credentials.txt", "w");
+    if (tempFile == NULL) {
+        printf("Error: Unable to save PIN. Error Code: 510\n");
+        logError("Failed to create temporary file while saving PIN.");
+        fclose(file);
+        return;
+    }
+
+    char line[256];
+    int storedCardNumber, storedPIN;
+    char storedUsername[50], storedStatus[10];
+
+    // Write the header lines
+    fgets(line, sizeof(line), file);
+    fprintf(tempFile, "%s", line);
+    fgets(line, sizeof(line), file);
+    fprintf(tempFile, "%s", line);
+
+    // Update the PIN for the matching card number
+    while (fscanf(file, "%49[^|] | %d | %d | %9s", storedUsername, &storedCardNumber, &storedPIN, storedStatus) == 4) {
+        if (storedCardNumber == cardNumber) {
+            fprintf(tempFile, "%-20s | %-11d | %-4d | %-9s\n", storedUsername, storedCardNumber, newPIN, storedStatus);
+        } else {
+            fprintf(tempFile, "%-20s | %-11d | %-4d | %-9s\n", storedUsername, storedCardNumber, storedPIN, storedStatus);
+        }
+    }
+
+    fclose(file);
+    fclose(tempFile);
+
+    // Replace the original file with the updated file
+    if (remove("data/credentials.txt") != 0 || rename("data/temp_credentials.txt", "data/credentials.txt") != 0) {
+        printf("Error: Unable to save PIN. Error Code: 511\n");
+        logError("Failed to replace credentials.txt with updated file while saving PIN.");
+    }
+}
+
