@@ -1,16 +1,27 @@
 #include <stdio.h>
-#include <string.h>
+#include "../src/database/database.h"
+#include "../src/validation/pin_validation.h"
+#include "../src/utils/logger.h"
 
-// Hashing key
-#define HASH_KEY "ATM_HASH_KEY"
-
-// Function to hash a string using XOR
-void hashString(const char *input, char *output) {
-    size_t keyLen = strlen(HASH_KEY);
-    size_t inputLen = strlen(input);
-
-    for (size_t i = 0; i < inputLen; i++) {
-        output[i] = input[i] ^ HASH_KEY[i % keyLen];
+void test_fetchBalance() {
+    float balance = fetchBalance(100041);
+    if (balance == 500.00) {
+        printf("fetchBalance test passed.\n");
+    } else {
+        printf("fetchBalance test failed.\n");
     }
-    output[inputLen] = '\0'; // Null-terminate the hashed string
+}
+
+void test_validatePIN() {
+    if (validatePIN(1467, 1467)) {
+        printf("validatePIN test passed.\n");
+    } else {
+        printf("validatePIN test failed.\n");
+    }
+}
+
+int main() {
+    test_fetchBalance();
+    test_validatePIN();
+    return 0;
 }
