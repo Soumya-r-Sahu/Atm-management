@@ -17,10 +17,11 @@
 void displayMainMenu(int cardNumber) {
     // Get session timeout from config (in seconds)
     int sessionTimeout = getConfigValueInt(CONFIG_SESSION_TIMEOUT_SECONDS);
-    if (sessionTimeout < 0) sessionTimeout = 180; // Default 3 minutes if config not found
+    if (sessionTimeout <= 0) sessionTimeout = 180; // Default 3 minutes if config not found
     
     // Initialize timer
     time_t sessionStart = time(NULL);
+    time_t lastActivity = sessionStart;
     time_t currentTime;
     
     int choice;
@@ -30,6 +31,11 @@ void displayMainMenu(int cardNumber) {
     // Get card holder's name and phone number
     getCardHolderName(cardNumber, holderName, sizeof(holderName));
     getCardHolderPhone(cardNumber, phoneNumber, sizeof(phoneNumber));
+    
+    // Record session start
+    char logMsg[100];
+    sprintf(logMsg, "Session started for card %d (%s)", cardNumber, holderName);
+    writeAuditLog("SESSION", logMsg);
     
     // Display ATM greeting
     printf("\n");
@@ -41,11 +47,20 @@ void displayMainMenu(int cardNumber) {
     do {
         // Check for session timeout
         currentTime = time(NULL);
-        if (difftime(currentTime, sessionStart) > sessionTimeout) {
-            printf("Session timed out due to inactivity.\n");
-            printf("Please insert your card again.\n");
+        if (difftime(currentTime, lastActivity) > sessionTimeout) {
+            printf("\n[SESSION TIMEOUT] Your session has expired due to inactivity.\n");
+            printf("Please authenticate again for security reasons.\n");
+            
+            // Log session timeout
+            sprintf(logMsg, "Session timeout for card %d after %d seconds of inactivity", 
+                   cardNumber, sessionTimeout);
+            writeAuditLog("SESSION", logMsg);
             return;
         }
+        
+        // Display remaining session time
+        int remainingTime = sessionTimeout - (int)difftime(currentTime, lastActivity);
+        printf("\nSession timeout in: %02d:%02d\n", remainingTime / 60, remainingTime % 60);
         
         printf("\n");
         printf(" ___________________________________________________\n");
@@ -62,7 +77,18 @@ void displayMainMenu(int cardNumber) {
         printf("|___________________________________________________|\n\n");
         
         printf("Enter your choice: ");
-        scanf("%d", &choice);
+        if (scanf("%d", &choice) != 1) {
+            printf("\nInvalid input. Please try again.\n");
+            // Clear input buffer
+            while (getchar() != '\n');
+            
+            // Reset activity timer
+            lastActivity = time(NULL);
+            continue;
+        }
+        
+        // Reset activity timer after successful input
+        lastActivity = time(NULL);
         
         switch (choice) {
             case 1: // Check Balance
@@ -85,13 +111,15 @@ void displayMainMenu(int cardNumber) {
                 break;
             case EXIT_OPTION: // Exit
                 printf("\nThank you for using our ATM service!\n");
+                
+                // Log session end
+                sprintf(logMsg, "Session ended normally for card %d after %.0f seconds", 
+                       cardNumber, difftime(currentTime, sessionStart));
+                writeAuditLog("SESSION", logMsg);
                 return;
             default:
                 printf("\nInvalid option selected. Please try again.\n");
         }
-        
-        // Reset session timer on user activity
-        sessionStart = time(NULL);
         
     } while (1); // Infinite loop, will be exited on valid user action or session timeout
 }
@@ -256,64 +284,77 @@ void handleMiniStatement(int cardNumber, const char *username, const char *phone
 // Handle PIN change operation
 void handlePinChange(int cardNumber, const char *username) {
     char currentPinStr[10], newPinStr[10], confirmPinStr[10];
+    char cardNumberStr[20];
     
     printf("\n===== PIN CHANGE =====\n");
+    
+    // Clear input buffer before starting
+    while (getchar() != '\n');
+    
+    // Get current PIN with proper buffer handling
     printf("Enter current PIN: ");
-    scanf("%s", currentPinStr);
-    
-    // Convert PIN string to number (for legacy validation)
-    int currentPin = atoi(currentPinStr);
-    
-    // First try hash-based authentication
-    bool authenticated = false;
-    char* currentPinHash = hashPIN(currentPinStr);
-    
-    if (currentPinHash != NULL) {
-        authenticated = validateCardWithHash(cardNumber, currentPinHash);
-        free(currentPinHash);
+    if (fgets(currentPinStr, sizeof(currentPinStr), stdin) == NULL) {
+        printf("\nError: Failed to read PIN input.\n");
+        return;
     }
     
-    // If hash validation fails, try legacy PIN validation
-    if (!authenticated && !validateCard(cardNumber, currentPin)) {
+    // Remove newline character if present
+    size_t len = strlen(currentPinStr);
+    if (len > 0 && currentPinStr[len-1] == '\n') {
+        currentPinStr[len-1] = '\0';
+    }
+    
+    // Convert card number to string for PIN validation
+    snprintf(cardNumberStr, sizeof(cardNumberStr), "%d", cardNumber);
+    
+    // Validate current PIN
+    if (!validatePIN(cardNumberStr, currentPinStr, 0)) {
         printf("\nError: Current PIN is incorrect.\n");
         recordFailedPINAttempt(cardNumber);
         return;
     }
     
+    // Get new PIN with proper buffer handling
     printf("Enter new PIN: ");
-    scanf("%s", newPinStr);
+    if (fgets(newPinStr, sizeof(newPinStr), stdin) == NULL) {
+        printf("\nError: Failed to read new PIN input.\n");
+        return;
+    }
     
+    // Remove newline character if present
+    len = strlen(newPinStr);
+    if (len > 0 && newPinStr[len-1] == '\n') {
+        newPinStr[len-1] = '\0';
+    }
+    
+    // Get confirmation PIN
     printf("Confirm new PIN: ");
-    scanf("%s", confirmPinStr);
+    if (fgets(confirmPinStr, sizeof(confirmPinStr), stdin) == NULL) {
+        printf("\nError: Failed to read confirmation PIN input.\n");
+        return;
+    }
     
+    // Remove newline character if present
+    len = strlen(confirmPinStr);
+    if (len > 0 && confirmPinStr[len-1] == '\n') {
+        confirmPinStr[len-1] = '\0';
+    }
+    
+    // Compare new PIN with confirmation
     if (strcmp(newPinStr, confirmPinStr) != 0) {
         printf("\nError: New PINs do not match.\n");
         return;
     }
     
-    // Convert new PIN string to number
+    // Check if new PIN has proper format (numeric and 4-6 digits)
     int newPin = atoi(newPinStr);
-    
     if (!isValidPINFormat(newPin)) {
-        printf("\nError: Invalid PIN format. Please enter a 4-digit PIN.\n");
+        printf("\nError: Invalid PIN format. PIN must be 4-6 digits.\n");
         return;
     }
     
-    // Update PIN with hash for enhanced security
-    char* newPinHash = hashPIN(newPinStr);
-    bool success = false;
-    
-    if (newPinHash != NULL) {
-        success = updatePINHash(cardNumber, newPinHash);
-        free(newPinHash);
-    } 
-    
-    // Fall back to legacy PIN update if hash update fails
-    if (!success) {
-        success = updatePIN(cardNumber, newPin);
-    }
-    
-    if (success) {
+    // Change the PIN
+    if (changePIN(cardNumberStr, currentPinStr, newPinStr, 0)) {
         printf("\nPIN changed successfully!\n");
         
         // Log the PIN change
@@ -322,10 +363,9 @@ void handlePinChange(int cardNumber, const char *username) {
         writeAuditLog("SECURITY", logMsg);
         
         // Reset PIN attempts counter
-        char cardNumberStr[20];
-        sprintf(cardNumberStr, "%d", cardNumber);
         resetPINAttempts(cardNumberStr, 0); // 0 for production mode
     } else {
-        printf("\nError: Failed to change PIN.\n");
+        printf("\nError: Failed to change PIN. Please try again later.\n");
+        writeErrorLog("PIN change operation failed in handlePinChange");
     }
 }

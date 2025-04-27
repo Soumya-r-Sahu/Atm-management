@@ -146,18 +146,28 @@ void displayWelcomeBanner() {
     printf("|____________________________________________________|\n\n");
 }
 
-// Handle card authentication
+// Handle card authentication with improved security
 int handleCardAuthentication() {
     int cardNumInt;
     char cardNumber[20]; // String representation for functions that expect strings
     char pinStr[10];
+    int scanResult;
     
     printf("\n===== Customer Authentication =====\n");
     printf("Please enter your card number: ");
-    scanf("%d", &cardNumInt);
+    scanResult = scanf("%d", &cardNumInt);
     
-    // Convert card number to string
-    sprintf(cardNumber, "%d", cardNumInt);
+    // Validate input is a number
+    if (scanResult != 1) {
+        writeErrorLog("Non-numeric card number entered");
+        printf("Invalid input. Please enter a numeric card number.\n");
+        // Clear input buffer
+        while (getchar() != '\n');
+        return -1;
+    }
+    
+    // Convert card number to string with size check
+    snprintf(cardNumber, sizeof(cardNumber), "%d", cardNumInt);
     
     // Check if card number is valid
     if (!doesCardExist(cardNumInt)) {
@@ -175,14 +185,18 @@ int handleCardAuthentication() {
     
     // Check if card is temporarily locked due to too many PIN attempts
     if (isCardLockedOut(cardNumber, 0)) {
-        int attempts = getRemainingPINAttempts(cardNumber, 0);
+        writeErrorLog("Attempt to use locked card");
         printf("This card is temporarily locked due to too many incorrect PIN attempts.\n");
+        printf("Please contact customer service for assistance.\n");
         return -1;
     }
     
-    // Get PIN
+    // Clear any remaining characters in the input buffer
+    while (getchar() != '\n');
+    
+    // Use secure PIN entry instead of plaintext input
     printf("Please enter your PIN: ");
-    scanf("%s", pinStr);
+    secure_pin_entry(pinStr, sizeof(pinStr));
     
     // Validate PIN
     if (!validatePIN(cardNumber, pinStr, 0)) {
@@ -190,6 +204,9 @@ int handleCardAuthentication() {
         int attemptsLeft = trackPINAttempt(cardNumber, 0);
         if (attemptsLeft > 0) {
             printf("Invalid PIN. You have %d attempts remaining.\n", attemptsLeft);
+        } else {
+            printf("Your card has been locked due to too many incorrect attempts.\n");
+            printf("Please contact customer service to unlock your card.\n");
         }
         writeErrorLog("Invalid PIN entered");
         return -1;
@@ -197,6 +214,11 @@ int handleCardAuthentication() {
     
     // Reset PIN attempts on successful validation
     resetPINAttempts(cardNumber, 0);
+    
+    // Log successful authentication
+    char logMsg[100];
+    sprintf(logMsg, "Successful authentication for card %d", cardNumInt);
+    writeAuditLog("AUTH", logMsg);
     
     return cardNumInt;
 }

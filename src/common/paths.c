@@ -1,191 +1,214 @@
 #include "paths.h"
+#include "../utils/memory_utils.h"
+#include "../common/error_handler.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
-#ifdef _WIN32
-#include <direct.h>     // For _mkdir on Windows
-#include <io.h>         // For _access on Windows
-#include <sys/types.h>
-#include <sys/stat.h>   // For _stat on Windows
-#define MKDIR(path) _mkdir(path)
-#define S_IFDIR _S_IFDIR
-#define stat _stat
-#else
 #include <sys/stat.h>
-#include <sys/types.h>
-#define MKDIR(path) mkdir(path, S_IRWXU | S_IRWXG | S_IRWXO)
-#endif
-
 #include <errno.h>
 
-// Static variable to track testing mode
-static bool testMode = false;
+// Global testing mode flag
+static int testMode = 0;
 
-// Check if the application is in testing mode
-bool isTestingMode() {
+// Set the testing mode flag
+void setTestingMode(int isTest) {
+    testMode = isTest;
+}
+
+// Get the current testing mode
+int isTestingMode() {
     return testMode;
 }
 
-// Set the application to use test or production data
-void setTestingMode(bool testing) {
-    testMode = testing;
+// Get file paths based on testing mode
+const char* getCardFilePath() {
+    return testMode ? TEST_CARD_FILE : PROD_CARD_FILE;
 }
 
-// Create directory if it doesn't exist
-static bool createDirectoryIfNotExists(const char* path) {
+const char* getCustomerFilePath() {
+    return testMode ? TEST_CUSTOMER_FILE : PROD_CUSTOMER_FILE;
+}
+
+const char* getAccountingFilePath() {
+    return testMode ? TEST_ACCOUNTING_FILE : PROD_ACCOUNTING_FILE;
+}
+
+const char* getVirtualWalletFilePath() {
+    return testMode ? TEST_VIRTUAL_WALLET_FILE : PROD_VIRTUAL_WALLET_FILE;
+}
+
+const char* getAdminCredentialsFilePath() {
+    return testMode ? TEST_ADMIN_CREDENTIALS_FILE : PROD_ADMIN_CREDENTIALS_FILE;
+}
+
+const char* getSystemConfigFilePath() {
+    return testMode ? TEST_SYSTEM_CONFIG_FILE : PROD_SYSTEM_CONFIG_FILE;
+}
+
+const char* getSecurityLogsFilePath() {
+    return testMode ? TEST_SECURITY_LOGS_FILE : PROD_SECURITY_LOGS_FILE;
+}
+
+const char* getPinAttemptsFilePath() {
+    return testMode ? TEST_PIN_ATTEMPTS_FILE : PROD_PIN_ATTEMPTS_FILE;
+}
+
+const char* getCardLockoutFilePath() {
+    return testMode ? TEST_CARD_LOCKOUT_FILE : PROD_CARD_LOCKOUT_FILE;
+}
+
+// Get log paths based on testing mode
+const char* getAuditLogFilePath() {
+    return testMode ? TEST_AUDIT_LOG_FILE : PROD_AUDIT_LOG_FILE;
+}
+
+const char* getErrorLogFilePath() {
+    return testMode ? TEST_ERROR_LOG_FILE : PROD_ERROR_LOG_FILE;
+}
+
+const char* getTransactionsLogFilePath() {
+    return testMode ? TEST_TRANSACTIONS_LOG_FILE : PROD_TRANSACTIONS_LOG_FILE;
+}
+
+const char* getWithdrawalsLogFilePath() {
+    return testMode ? TEST_WITHDRAWALS_LOG_FILE : PROD_WITHDRAWALS_LOG_FILE;
+}
+
+// Create a temporary file path
+char* createTempFilePath(const char* baseFilePath) {
+    size_t len = strlen(baseFilePath);
+    char* tempPath = (char*)MALLOC(len + 5, "Temporary file path");
+    
+    if (!tempPath) {
+        SET_ERROR(ERR_MEMORY_ALLOCATION, "Failed to allocate memory for temporary file path");
+        return NULL;
+    }
+    
+    strcpy(tempPath, baseFilePath);
+    strcat(tempPath, ".tmp");
+    
+    return tempPath;
+}
+
+// Join path components safely
+char* joinPaths(const char* dir, const char* filename) {
+    if (!dir || !filename) {
+        SET_ERROR(ERR_INVALID_INPUT, "Invalid directory or filename for path joining");
+        return NULL;
+    }
+    
+    size_t dirLen = strlen(dir);
+    size_t fileLen = strlen(filename);
+    size_t needsSep = (dirLen > 0 && dir[dirLen - 1] != '/') ? 1 : 0;
+    
+    char* fullPath = (char*)MALLOC(dirLen + fileLen + needsSep + 1, "Joined path");
+    if (!fullPath) {
+        SET_ERROR(ERR_MEMORY_ALLOCATION, "Failed to allocate memory for joined path");
+        return NULL;
+    }
+    
+    strcpy(fullPath, dir);
+    
+    if (needsSep) {
+        strcat(fullPath, "/");
+    }
+    
+    strcat(fullPath, filename);
+    
+    return fullPath;
+}
+
+// Cross-platform directory creation
+int createDirectory(const char* path) {
 #ifdef _WIN32
-    // For Windows
-    struct stat info;
-    if (stat(path, &info) != 0) {
-        // Path doesn't exist, create it
-        int result = MKDIR(path);
-        return (result == 0);
-    } else if (info.st_mode & S_IFDIR) {
-        // Path exists and is a directory
-        return true;
-    }
-    // Path exists but is not a directory
-    return false;
+    // Windows
+    int result = mkdir(path);
 #else
-    // For Unix-like systems
-    struct stat info;
-    if (stat(path, &info) != 0) {
-        // Path doesn't exist, create it
-        int result = MKDIR(path);
-        return (result == 0);
-    } else if (S_ISDIR(info.st_mode)) {
-        // Path exists and is a directory
-        return true;
-    }
-    // Path exists but is not a directory
-    return false;
+    // Unix-like systems
+    int result = mkdir(path, 0755);
 #endif
+    
+    if (result != 0) {
+        // If directory already exists, it's not an error
+        if (errno == EEXIST) {
+            return 1;
+        }
+        
+        char errMsg[256];
+        snprintf(errMsg, sizeof(errMsg), "Failed to create directory '%s'", path);
+        SET_ERROR(ERR_FILE_ACCESS, errMsg);
+        return 0;
+    }
+    
+    return 1;
+}
+
+// Ensure directory exists
+int ensureDirectoryExists(const char* dirPath) {
+    return createDirectory(dirPath);
+}
+
+// Check if a file exists
+static int fileExists(const char* filePath) {
+    FILE* file = fopen(filePath, "r");
+    if (file) {
+        fclose(file);
+        return 1;
+    }
+    return 0;
 }
 
 // Create an empty file if it doesn't exist
-static bool createFileIfNotExists(const char* path) {
-    FILE* file = fopen(path, "r");
-    if (file == NULL) {
-        // File doesn't exist, create it
-        file = fopen(path, "w");
-        if (file == NULL) {
-            return false;
+static int ensureFileExists(const char* filePath) {
+    if (fileExists(filePath)) {
+        return 1; // File already exists
+    }
+    
+    FILE* file = fopen(filePath, "w");
+    if (!file) {
+        char errMsg[256];
+        snprintf(errMsg, sizeof(errMsg), "Failed to create file '%s'", filePath);
+        SET_ERROR(ERR_FILE_ACCESS, errMsg);
+        return 0;
+    }
+    
+    fclose(file);
+    return 1;
+}
+
+// Initialize directories and files
+int initializeDataFiles() {
+    // Create required directories
+    if (!ensureDirectoryExists(PROD_DATA_DIR)) return 0;
+    if (!ensureDirectoryExists(PROD_LOG_DIR)) return 0;
+    if (!ensureDirectoryExists(TEST_DATA_DIR)) return 0;
+    if (!ensureDirectoryExists("data/temp")) return 0;
+    
+    // Ensure essential files exist
+    const char* essentialFiles[] = {
+        PROD_CARD_FILE,
+        PROD_CUSTOMER_FILE,
+        PROD_ACCOUNTING_FILE,
+        PROD_VIRTUAL_WALLET_FILE,
+        PROD_ADMIN_CREDENTIALS_FILE,
+        PROD_SYSTEM_CONFIG_FILE,
+        PROD_SECURITY_LOGS_FILE,
+        TEST_CARD_FILE,
+        TEST_CUSTOMER_FILE,
+        TEST_ACCOUNTING_FILE,
+        TEST_VIRTUAL_WALLET_FILE,
+        TEST_ADMIN_CREDENTIALS_FILE,
+        TEST_SYSTEM_CONFIG_FILE,
+        TEST_SECURITY_LOGS_FILE
+    };
+    
+    int fileCount = sizeof(essentialFiles) / sizeof(essentialFiles[0]);
+    
+    for (int i = 0; i < fileCount; i++) {
+        if (!ensureFileExists(essentialFiles[i])) {
+            return 0;
         }
-        fclose(file);
-        return true;
-    }
-    // File already exists
-    fclose(file);
-    return true;
-}
-
-// Create template credentials file
-static void createTemplateCredentialsFile(const char* path) {
-    FILE* file = fopen(path, "w");
-    if (file == NULL) {
-        return;
     }
     
-    fprintf(file, "Account Holder Name | Phone Number  | Card Number | PIN  | Status\n");
-    fprintf(file, "--------------------|---------------|-------------|------|--------\n");
-    fprintf(file, "Soumya               | 9876543210    | 100041      | 1467 | Active\n");
-    fprintf(file, "Rahul                | 8765432109    | 106334      | 9500 | Active\n");
-    
-    fclose(file);
-}
-
-// Create template accounting file
-static void createTemplateAccountingFile(const char* path) {
-    FILE* file = fopen(path, "w");
-    if (file == NULL) {
-        return;
-    }
-    
-    fprintf(file, "Card Number | Balance\n");
-    fprintf(file, "------------|--------\n");
-    fprintf(file, "100041       | 500.00\n");
-    fprintf(file, "106334       | 15545.00\n");
-    
-    fclose(file);
-}
-
-// Create template admin credentials file
-static void createTemplateAdminCredentialsFile(const char* path) {
-    FILE* file = fopen(path, "w");
-    if (file == NULL) {
-        return;
-    }
-    
-    fprintf(file, "admin admin123\n");
-    
-    fclose(file);
-}
-
-// Initialize all necessary data files and directories
-bool initializeDataFiles() {
-    bool success = true;
-    
-    // Create directories
-    success &= createDirectoryIfNotExists(PROD_DATA_DIR);
-    success &= createDirectoryIfNotExists(TEST_DATA_DIR);
-    
-    // Create logs directory
-    char logsDir[100];
-    strcpy(logsDir, PROD_DATA_DIR);
-    strcat(logsDir, "/../logs");
-    success &= createDirectoryIfNotExists(logsDir);
-    
-    // Create temp directory
-    char tempDir[100];
-    strcpy(tempDir, PROD_DATA_DIR);
-    strcat(tempDir, "/temp");
-    success &= createDirectoryIfNotExists(tempDir);
-    
-    // Create production data files if they don't exist
-    if (!createFileIfNotExists(PROD_CREDENTIALS_FILE)) {
-        createTemplateCredentialsFile(PROD_CREDENTIALS_FILE);
-    }
-    
-    if (!createFileIfNotExists(PROD_ACCOUNTING_FILE)) {
-        createTemplateAccountingFile(PROD_ACCOUNTING_FILE);
-    }
-    
-    createFileIfNotExists(PROD_ADMIN_CRED_FILE);
-    createFileIfNotExists(PROD_AUDIT_LOG_FILE);
-    createFileIfNotExists(PROD_STATUS_FILE);
-    createFileIfNotExists(PROD_LANGUAGES_FILE);
-    createFileIfNotExists(PROD_TRANSACTIONS_LOG_FILE);
-    createFileIfNotExists(PROD_ERROR_LOG_FILE);
-    
-    // Create test data files if they don't exist
-    if (!createFileIfNotExists(TEST_CREDENTIALS_FILE)) {
-        createTemplateCredentialsFile(TEST_CREDENTIALS_FILE);
-    }
-    
-    if (!createFileIfNotExists(TEST_ACCOUNTING_FILE)) {
-        createTemplateAccountingFile(TEST_ACCOUNTING_FILE);
-    }
-    
-    if (!createFileIfNotExists(TEST_ADMIN_CRED_FILE)) {
-        createTemplateAdminCredentialsFile(TEST_ADMIN_CRED_FILE);
-    }
-    
-    createFileIfNotExists(TEST_AUDIT_LOG_FILE);
-    createFileIfNotExists(TEST_STATUS_FILE);
-    createFileIfNotExists(TEST_LANGUAGES_FILE);
-    createFileIfNotExists(TEST_TRANSACTIONS_LOG_FILE);
-    createFileIfNotExists(TEST_ERROR_LOG_FILE);
-    
-    return success;
-}
-
-// Helper function to get the card file path
-const char* getCardFilePath() {
-    return isTestingMode() ? TEST_CREDENTIALS_FILE : PROD_DATA_DIR "/card.txt";
-}
-
-// Helper function to get the customer file path
-const char* getCustomerFilePath() {
-    return isTestingMode() ? TEST_DATA_DIR "/test_customer.txt" : PROD_DATA_DIR "/customer.txt";
+    return 1;
 }

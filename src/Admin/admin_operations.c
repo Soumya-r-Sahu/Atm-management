@@ -459,3 +459,69 @@ void regenerateCardPin(int cardNumber) {
         printf("Failed to regenerate PIN for card %d.\n", cardNumber);
     }
 }
+
+// Implementation for createAccount function declared in header
+void createAccount() {
+    char accountHolderName[100];
+    int cardNumber = 0;
+    int pin = 0;
+    char choice;
+    
+    printf("\n===== Create New Account =====\n");
+    
+    // Clear input buffer first
+    while (getchar() != '\n');
+    
+    printf("Enter account holder name: ");
+    fgets(accountHolderName, sizeof(accountHolderName), stdin);
+    
+    // Remove newline character
+    size_t len = strlen(accountHolderName);
+    if (len > 0 && accountHolderName[len-1] == '\n') {
+        accountHolderName[len-1] = '\0';
+    }
+    
+    printf("Do you want to specify a card number? (y/n): ");
+    scanf(" %c", &choice);
+    
+    if (choice == 'y' || choice == 'Y') {
+        printf("Enter card number (6 digits): ");
+        scanf("%d", &cardNumber);
+        
+        // Validate card number
+        if (cardNumber < 100000 || cardNumber > 999999) {
+            printf("Invalid card number. Must be 6 digits.\n");
+            return;
+        }
+        
+        // Check if card number is unique
+        if (!isCardNumberUnique(cardNumber)) {
+            printf("Error: Card number already exists.\n");
+            return;
+        }
+    }
+    
+    printf("Do you want to specify a PIN? (y/n): ");
+    scanf(" %c", &choice);
+    
+    if (choice == 'y' || choice == 'Y') {
+        printf("Enter PIN (4 digits): ");
+        scanf("%d", &pin);
+        
+        // Validate PIN
+        if (pin < 1000 || pin > 9999) {
+            printf("Invalid PIN. Must be 4 digits.\n");
+            return;
+        }
+    }
+    
+    // Call the actual implementation function
+    if (createCustomerAccount(accountHolderName, &cardNumber, &pin)) {
+        printf("\nAccount created successfully!\n");
+        printf("Card Number: %d\n", cardNumber);
+        printf("PIN: %d\n", pin);
+        printf("\nPlease instruct the customer to change their PIN on first use.\n");
+    } else {
+        printf("\nError: Failed to create account.\n");
+    }
+}

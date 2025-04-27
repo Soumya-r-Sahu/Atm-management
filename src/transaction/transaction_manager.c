@@ -337,7 +337,7 @@ TransactionResult getMiniStatement(int cardNumber, const char* username) {
     return result;
 }
 
-// Perform money transfer between accounts
+// Perform money transfer between accounts with transaction atomicity
 TransactionResult performMoneyTransfer(int senderCardNumber, int receiverCardNumber, float amount, const char* username) {
     TransactionResult result = {0};
     
@@ -365,9 +365,30 @@ TransactionResult performMoneyTransfer(int senderCardNumber, int receiverCardNum
         return result;
     }
     
+    // Lock the transaction files to ensure atomicity
+    if (!lockTransactionFiles()) {
+        result.success = 0;
+        strcpy(result.message, "Error: System busy, please try again later");
+        logTransaction(senderCardNumber, TRANSACTION_MONEY_TRANSFER, amount, 0);
+        return result;
+    }
+    
+    // Start transaction - create backup of account files
+    if (!backupAccountFiles()) {
+        unlockTransactionFiles();
+        result.success = 0;
+        strcpy(result.message, "Error: Could not initiate transaction safely");
+        logTransaction(senderCardNumber, TRANSACTION_MONEY_TRANSFER, amount, 0);
+        return result;
+    }
+    
     // Fetch sender balance
     float senderBalance = fetchBalance(senderCardNumber);
     if (senderBalance < 0) {
+        // Rollback by restoring from backup
+        restoreAccountFiles();
+        unlockTransactionFiles();
+        
         result.success = 0;
         strcpy(result.message, "Error: Unable to fetch your account balance");
         logTransaction(senderCardNumber, TRANSACTION_MONEY_TRANSFER, amount, 0);
@@ -376,15 +397,22 @@ TransactionResult performMoneyTransfer(int senderCardNumber, int receiverCardNum
     
     // Check if sender has sufficient funds
     if (senderBalance < amount) {
+        // No need to rollback, just release locks
+        unlockTransactionFiles();
+        
         result.success = 0;
         sprintf(result.message, "Error: Insufficient funds. Current balance: $%.2f", senderBalance);
         logTransaction(senderCardNumber, TRANSACTION_MONEY_TRANSFER, amount, 0);
         return result;
     }
     
-    // Perform the money transfer
+    // Fetch receiver balance
     float receiverBalance = fetchBalance(receiverCardNumber);
     if (receiverBalance < 0) {
+        // Rollback by restoring from backup
+        restoreAccountFiles();
+        unlockTransactionFiles();
+        
         result.success = 0;
         strcpy(result.message, "Error: Unable to fetch recipient's account balance");
         logTransaction(senderCardNumber, TRANSACTION_MONEY_TRANSFER, amount, 0);
@@ -392,106 +420,135 @@ TransactionResult performMoneyTransfer(int senderCardNumber, int receiverCardNum
     }
     
     // Update balances of both sender and receiver
-    if (updateBalance(senderCardNumber, senderBalance - amount) && 
-        updateBalance(receiverCardNumber, receiverBalance + amount)) {
-        result.success = 1;
-        result.oldBalance = senderBalance;
-        result.newBalance = senderBalance - amount;
-        sprintf(result.message, "Transfer successful. Your new balance: $%.2f", result.newBalance);
+    int senderUpdateSuccess = updateBalance(senderCardNumber, senderBalance - amount);
+    int receiverUpdateSuccess = updateBalance(receiverCardNumber, receiverBalance + amount);
+    
+    if (!senderUpdateSuccess || !receiverUpdateSuccess) {
+        // Rollback if either update fails
+        restoreAccountFiles();
+        unlockTransactionFiles();
         
-        // Log the transaction for both accounts
-        char detailsLog[100];
-        sprintf(detailsLog, "Transferred $%.2f to card %d", amount, receiverCardNumber);
-        writeTransactionDetails(username, "Money Transfer", detailsLog);
-        
-        logTransaction(senderCardNumber, TRANSACTION_MONEY_TRANSFER, amount, 1);
-        
-        // Also log for recipient
-        char recipientName[50] = "Unknown"; // Default if we can't find name
-        getCardHolderName(receiverCardNumber, recipientName, sizeof(recipientName));
-        
-        char recipientLog[100];
-        sprintf(recipientLog, "Received $%.2f from card %d (%s)", amount, senderCardNumber, username);
-        writeTransactionDetails(recipientName, "Money Received", recipientLog);
-        
-        logTransaction(receiverCardNumber, TRANSACTION_MONEY_TRANSFER, amount, 1);
-    } else {
         result.success = 0;
         strcpy(result.message, "Error: Failed to complete transfer");
         logTransaction(senderCardNumber, TRANSACTION_MONEY_TRANSFER, amount, 0);
+        return result;
     }
+    
+    // Transaction successful, commit changes
+    unlockTransactionFiles();
+    
+    // Update result with success info
+    result.success = 1;
+    result.oldBalance = senderBalance;
+    result.newBalance = senderBalance - amount;
+    sprintf(result.message, "Transfer successful. Your new balance: $%.2f", result.newBalance);
+    
+    // Log the transaction for both accounts
+    char detailsLog[100];
+    sprintf(detailsLog, "Transferred $%.2f to card %d", amount, receiverCardNumber);
+    writeTransactionDetails(username, "Money Transfer", detailsLog);
+    
+    logTransaction(senderCardNumber, TRANSACTION_MONEY_TRANSFER, amount, 1);
+    
+    // Also log for recipient
+    char recipientName[50] = "Unknown"; // Default if we can't find name
+    getCardHolderName(receiverCardNumber, recipientName, sizeof(recipientName));
+    
+    char recipientLog[100];
+    sprintf(recipientLog, "Received $%.2f from card %d (%s)", amount, senderCardNumber, username);
+    writeTransactionDetails(recipientName, "Money Received", recipientLog);
+    
+    logTransaction(receiverCardNumber, TRANSACTION_MONEY_TRANSFER, amount, 1);
     
     return result;
 }
 
-// Alias for performMoneyTransfer to maintain backward compatibility
-TransactionResult performFundTransfer(int cardNumber, int targetCardNumber, float amount, const char* username) {
-    return performMoneyTransfer(cardNumber, targetCardNumber, amount, username);
-}
-
-// Function to log transaction details to the audit log
-void writeTransactionDetails(const char* username, const char* type, const char* details) {
-    char logEntry[300];
-    sprintf(logEntry, "USER: %s | ACTION: %s | DETAILS: %s", 
-            username, type, details);
-    
-    // Write to the audit log
-    writeAuditLog("TRANSACTION", logEntry);
-}
-
-// Function to generate and send a receipt
-void generateReceipt(int cardNumber, TransactionType type, float amount, float balance, const char* phoneNumber) {
-    char typeStr[30];
-    
-    // Convert transaction type enum to string
-    switch (type) {
-        case TRANSACTION_BALANCE_CHECK: 
-            strcpy(typeStr, "Balance Check"); 
-            break;
-        case TRANSACTION_DEPOSIT: 
-            strcpy(typeStr, "Deposit"); 
-            break;
-        case TRANSACTION_WITHDRAWAL: 
-            strcpy(typeStr, "Withdrawal"); 
-            break;
-        case TRANSACTION_MONEY_TRANSFER: 
-            strcpy(typeStr, "Money Transfer"); 
-            break;
-        case TRANSACTION_MINI_STATEMENT: 
-            strcpy(typeStr, "Mini Statement"); 
-            break;
-        case TRANSACTION_PIN_CHANGE: 
-            strcpy(typeStr, "PIN Change"); 
-            break;
-        default: 
-            strcpy(typeStr, "Unknown"); 
-            break;
+// Helper functions for transaction atomicity
+int lockTransactionFiles() {
+    // Create a lock file to indicate that a transaction is in progress
+    FILE* lockFile = fopen("data/temp/transaction.lock", "w");
+    if (lockFile == NULL) {
+        writeErrorLog("Failed to create transaction lock file");
+        return 0;
     }
     
-    // Get date and time for receipt
-    char timestamp[30];
-    getCurrentTimestamp(timestamp, sizeof(timestamp));
+    // Write current timestamp and process ID to the lock file
+    time_t now = time(NULL);
+    fprintf(lockFile, "LOCKED:%ld:%d\n", (long)now, getpid());
+    fclose(lockFile);
     
-    // Get card holder's name
-    char holderName[50] = "Customer"; // Default if we can't get name
-    getCardHolderName(cardNumber, holderName, sizeof(holderName));
-    
-    // Log that receipt was generated
-    char logMsg[100];
-    sprintf(logMsg, "Receipt generated for %s (Card: %d, Phone: %s)", 
-           holderName, cardNumber, phoneNumber);
-    writeAuditLog("RECEIPT", logMsg);
-    
-    // In a real system, we'd send an SMS receipt to phoneNumber
-    // For our test implementation, we'll just print to console
-    printf("\n=========== RECEIPT ==========\n");
-    printf("Date: %s\n", timestamp);
-    printf("Card: **** **** **** %04d\n", cardNumber % 10000);
-    printf("Transaction: %s\n", typeStr);
-    if (amount > 0) {
-        printf("Amount: $%.2f\n", amount);
+    return 1;
+}
+
+int unlockTransactionFiles() {
+    // Remove the lock file
+    if (remove("data/temp/transaction.lock") != 0) {
+        writeErrorLog("Failed to remove transaction lock file");
+        return 0;
     }
-    printf("Current Balance: $%.2f\n", balance);
-    printf("============================\n");
-    printf("Thank you for using our ATM!\n");
+    return 1;
+}
+
+int backupAccountFiles() {
+    // Backup accounting file
+    const char* accountingFile = isTestingMode() ? TEST_ACCOUNTING_FILE : PROD_ACCOUNTING_FILE;
+    const char* backupFile = "data/temp/accounting.bak";
+    
+    FILE* source = fopen(accountingFile, "r");
+    if (source == NULL) {
+        writeErrorLog("Failed to open accounting file for backup");
+        return 0;
+    }
+    
+    FILE* backup = fopen(backupFile, "w");
+    if (backup == NULL) {
+        writeErrorLog("Failed to create accounting backup file");
+        fclose(source);
+        return 0;
+    }
+    
+    // Copy the file content
+    char buffer[1024];
+    size_t bytesRead;
+    
+    while ((bytesRead = fread(buffer, 1, sizeof(buffer), source)) > 0) {
+        fwrite(buffer, 1, bytesRead, backup);
+    }
+    
+    fclose(source);
+    fclose(backup);
+    
+    return 1;
+}
+
+int restoreAccountFiles() {
+    // Restore accounting file from backup
+    const char* accountingFile = isTestingMode() ? TEST_ACCOUNTING_FILE : PROD_ACCOUNTING_FILE;
+    const char* backupFile = "data/temp/accounting.bak";
+    
+    FILE* backup = fopen(backupFile, "r");
+    if (backup == NULL) {
+        writeErrorLog("Failed to open accounting backup file for restore");
+        return 0;
+    }
+    
+    FILE* dest = fopen(accountingFile, "w");
+    if (dest == NULL) {
+        writeErrorLog("Failed to open accounting file for restore");
+        fclose(backup);
+        return 0;
+    }
+    
+    // Copy the file content
+    char buffer[1024];
+    size_t bytesRead;
+    
+    while ((bytesRead = fread(buffer, 1, sizeof(buffer), backup)) > 0) {
+        fwrite(buffer, 1, bytesRead, dest);
+    }
+    
+    fclose(backup);
+    fclose(dest);
+    
+    return 1;
 }

@@ -150,53 +150,79 @@ int changePIN(const char* cardNumber, const char* oldPin, const char* newPin, in
         writeErrorLog("Failed to create temporary credentials file");
         fclose(originalFile);
         free(newHash);
-        return 0;
+        return 0; // Added missing return statement
     }
     
+    // Copy header and update the matching card entry
     char line[256];
-    int updated = 0;
+    int found = 0;
     
-    // Copy and update the credentials file
+    // Copy the first two header lines
+    if (fgets(line, sizeof(line), originalFile)) {
+        fputs(line, tempFile);
+    }
+    if (fgets(line, sizeof(line), originalFile)) {
+        fputs(line, tempFile);
+    }
+    
+    // Process the rest of the file
     while (fgets(line, sizeof(line), originalFile)) {
-        char storedCardNumber[20];
-        char hash[65];
-        
-        // Remove newline if present
-        char* newline = strchr(line, '\n');
-        if (newline) *newline = '\0';
-        
-        if (sscanf(line, "%19[^,],%64s", storedCardNumber, hash) == 2 && strcmp(storedCardNumber, cardNumber) == 0) {
-            // Update this card's PIN hash
-            fprintf(tempFile, "%s,%s\n", cardNumber, newHash);
-            updated = 1;
+        // Check if this is the line with our card number
+        char currentCardNumber[20];
+        if (sscanf(line, "%*s | %*s | %s", currentCardNumber) == 1) {
+            if (strcmp(currentCardNumber, cardNumber) == 0) {
+                // Found the card - update the PIN hash
+                found = 1;
+                
+                // Parse the line to get all values
+                char cardID[20], accountID[20], cardType[20], expiryDate[20], status[20];
+                sscanf(line, "%s | %s | %s | %s | %s | %s", 
+                       cardID, accountID, currentCardNumber, cardType, expiryDate, status);
+                
+                // Write the updated line with new PIN hash
+                fprintf(tempFile, "%s | %s | %s | %s | %s | %s | %s\n",
+                        cardID, accountID, currentCardNumber, cardType, expiryDate, status, newHash);
+            } else {
+                // Not the card we're looking for, copy as-is
+                fputs(line, tempFile);
+            }
         } else {
-            // Copy line unchanged (add newline back if removed)
-            fprintf(tempFile, "%s\n", line);
+            // Not a valid card line format, copy as-is
+            fputs(line, tempFile);
         }
     }
     
+    // Close both files
     fclose(originalFile);
     fclose(tempFile);
-    free(newHash);
     
-    if (!updated) {
-        writeErrorLog("Card number not found in credentials file");
-        remove(tempPath); // Delete the temp file
+    // If we didn't find the card, report an error
+    if (!found) {
+        writeErrorLog("Card not found during PIN change");
+        free(newHash);
+        remove(tempPath); // Delete the temporary file
         return 0;
     }
     
     // Replace the original file with the updated one
     if (remove(credentialsPath) != 0) {
-        writeErrorLog("Failed to remove original credentials file");
+        writeErrorLog("Failed to remove original credentials file during PIN change");
+        free(newHash);
+        remove(tempPath);
         return 0;
     }
     
     if (rename(tempPath, credentialsPath) != 0) {
-        writeErrorLog("Failed to rename temporary credentials file");
+        writeErrorLog("Failed to rename temporary file during PIN change");
+        free(newHash);
         return 0;
     }
     
-    writeAuditLog("PIN", "PIN successfully changed for card");
+    // Free allocated memory
+    free(newHash);
+    
+    // Log successful PIN change
+    writeAuditLog("PIN", "PIN changed successfully for card");
     return 1;
 }
 

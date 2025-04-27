@@ -1,79 +1,85 @@
 #ifndef PATHS_H
 #define PATHS_H
 
-#include <stdbool.h>
+// Test mode flag
+int isTestingMode();
+void setTestingMode(int isTest);
 
-// Directory paths
-#define PROD_DATA_DIR "./../../data"
-#define TEST_DATA_DIR "./../../testing"
+// Data directory paths
+#define PROD_DATA_DIR "data"
+#define TEST_DATA_DIR "testing"
 
-// File paths for production
-#define PROD_CREDENTIALS_FILE PROD_DATA_DIR "/credentials.txt"
-#define PROD_ACCOUNTING_FILE PROD_DATA_DIR "/accounting.txt"
-#define PROD_ADMIN_CRED_FILE PROD_DATA_DIR "/admin_credentials.txt"
-#define PROD_AUDIT_LOG_FILE PROD_DATA_DIR "/audit.log"
-#define PROD_STATUS_FILE PROD_DATA_DIR "/status.txt"
-#define PROD_LANGUAGES_FILE PROD_DATA_DIR "/languages.txt"
+// Log directory paths
+#define PROD_LOG_DIR "logs"
+#define TEST_LOG_DIR "testing"
 
-// File paths for testing
-#define TEST_CREDENTIALS_FILE TEST_DATA_DIR "/test_card.txt"
-#define TEST_ACCOUNTING_FILE TEST_DATA_DIR "/test_account.txt"
-#define TEST_ADMIN_CRED_FILE TEST_DATA_DIR "/test_admin_credentials.txt"
-#define TEST_AUDIT_LOG_FILE TEST_DATA_DIR "/test_audit_log.txt"
-#define TEST_STATUS_FILE TEST_DATA_DIR "/test_system_config.txt"
-#define TEST_LANGUAGES_FILE TEST_DATA_DIR "/test_languages.txt"
+// File paths for production mode
+#define PROD_CARD_FILE "data/card.txt"
+#define PROD_CUSTOMER_FILE "data/customer.txt"
+#define PROD_ACCOUNTING_FILE "data/accounting.txt"
+#define PROD_VIRTUAL_WALLET_FILE "data/virtual_wallet.txt"
+#define PROD_ADMIN_CREDENTIALS_FILE "data/admin_credentials.txt"
+#define PROD_ATM_CONFIG_FILE "data/atm_config.txt"
+#define PROD_SYSTEM_CONFIG_FILE "data/system_config.txt"
+#define PROD_SECURITY_LOGS_FILE "data/security_logs.txt"
+#define PROD_PIN_ATTEMPTS_FILE "data/pin_attempts.txt"
+#define PROD_CARD_LOCKOUT_FILE "data/card_lockouts.txt"
 
-// Transaction log files
-#define PROD_TRANSACTIONS_LOG_FILE PROD_DATA_DIR "/../logs/transactions.log"
-#define TEST_TRANSACTIONS_LOG_FILE TEST_DATA_DIR "/test_transaction.txt"
+// Log file paths for production mode
+#define PROD_AUDIT_LOG_FILE "logs/audit.log"
+#define PROD_ERROR_LOG_FILE "logs/error.log"
+#define PROD_TRANSACTIONS_LOG_FILE "logs/transactions.log"
+#define PROD_WITHDRAWALS_LOG_FILE "logs/withdrawals.log"
 
-// Error log files
-#define PROD_ERROR_LOG_FILE PROD_DATA_DIR "/../logs/error.log"
-#define TEST_ERROR_LOG_FILE TEST_DATA_DIR "/test_security_logs.txt"
+// File paths for test mode
+#define TEST_CARD_FILE "testing/test_card.txt"
+#define TEST_CUSTOMER_FILE "testing/test_customer.txt"
+#define TEST_ACCOUNTING_FILE "testing/test_account.txt"
+#define TEST_VIRTUAL_WALLET_FILE "testing/test_virtual_wallet.txt"
+#define TEST_ADMIN_CREDENTIALS_FILE "testing/test_admin_credentials.txt"
+#define TEST_SYSTEM_CONFIG_FILE "testing/test_system_config.txt"
+#define TEST_SECURITY_LOGS_FILE "testing/test_security_logs.txt"
+#define TEST_PIN_ATTEMPTS_FILE "testing/test_pin_attempts.txt"
+#define TEST_CARD_LOCKOUT_FILE "testing/test_card_lockouts.txt"
 
-// Dynamic file paths based on environment
-#define CREDENTIALS_FILE (isTestingMode() ? TEST_CREDENTIALS_FILE : PROD_CREDENTIALS_FILE)
-#define ACCOUNTING_FILE (isTestingMode() ? TEST_ACCOUNTING_FILE : PROD_ACCOUNTING_FILE)
-#define ADMIN_CRED_FILE (isTestingMode() ? TEST_ADMIN_CRED_FILE : PROD_ADMIN_CRED_FILE)
-#define AUDIT_LOG_FILE (isTestingMode() ? TEST_AUDIT_LOG_FILE : PROD_AUDIT_LOG_FILE)
-#define STATUS_FILE (isTestingMode() ? TEST_STATUS_FILE : PROD_STATUS_FILE)
-#define LANGUAGES_FILE (isTestingMode() ? TEST_LANGUAGES_FILE : PROD_LANGUAGES_FILE)
-#define TRANSACTIONS_LOG_FILE (isTestingMode() ? TEST_TRANSACTIONS_LOG_FILE : PROD_TRANSACTIONS_LOG_FILE)
-#define ERROR_LOG_FILE (isTestingMode() ? TEST_ERROR_LOG_FILE : PROD_ERROR_LOG_FILE)
+// Log file paths for test mode
+#define TEST_AUDIT_LOG_FILE "testing/test_audit_log.txt"
+#define TEST_ERROR_LOG_FILE "testing/test_error_log.txt"
+#define TEST_TRANSACTIONS_LOG_FILE "testing/test_transaction.txt"
+#define TEST_WITHDRAWALS_LOG_FILE "testing/test_withdrawals.log"
 
-/**
- * Checks if the application is currently in testing mode
- * 
- * @return true if running in test mode, false otherwise
- */
-bool isTestingMode();
+// Configuration keys
+#define CONFIG_MAX_WRONG_PIN_ATTEMPTS "max_wrong_pin_attempts"
+#define CONFIG_PIN_LOCKOUT_MINUTES "pin_lockout_minutes"
+#define CONFIG_SESSION_TIMEOUT_SECONDS "session_timeout_seconds"
 
-/**
- * Sets the application to run in testing or production mode
- * 
- * @param testing true to use test data, false to use production data
- */
-void setTestingMode(bool testing);
-
-/**
- * Creates any missing data files and directories
- * 
- * @return true if all required files and directories are ready, false otherwise
- */
-bool initializeDataFiles();
-
-/**
- * Gets the path to the card file based on test/production mode
- * 
- * @return path to the card file
- */
+// Get file paths with mode detection
 const char* getCardFilePath();
-
-/**
- * Gets the path to the customer file based on test/production mode
- * 
- * @return path to the customer file
- */
 const char* getCustomerFilePath();
+const char* getAccountingFilePath();
+const char* getVirtualWalletFilePath();
+const char* getAdminCredentialsFilePath();
+const char* getSystemConfigFilePath();
+const char* getSecurityLogsFilePath();
+const char* getPinAttemptsFilePath();
+const char* getCardLockoutFilePath();
+
+// Get log paths with mode detection
+const char* getAuditLogFilePath();
+const char* getErrorLogFilePath();
+const char* getTransactionsLogFilePath();
+const char* getWithdrawalsLogFilePath();
+
+// Create a temporary file path
+char* createTempFilePath(const char* baseFilePath);
+
+// Join path components safely
+char* joinPaths(const char* dir, const char* filename);
+
+// Ensure directory exists
+int ensureDirectoryExists(const char* dirPath);
+
+// Initialize directories and files
+int initializeDataFiles();
 
 #endif // PATHS_H

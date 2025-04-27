@@ -1,34 +1,43 @@
 #ifndef TRANSACTION_MANAGER_H
 #define TRANSACTION_MANAGER_H
 
-#include <stdbool.h>  // Added for bool type
-#include "transaction_types.h"  // Include shared TransactionType definition
-
-#define PHONE_NUMBER_LENGTH 10
+#include "transaction_types.h"
+#include <unistd.h>  // For getpid()
 
 // Transaction result structure
 typedef struct {
-    int success;
-    char message[200];
-    float newBalance;
-    float oldBalance;
+    int success;           // 1 for success, 0 for failure
+    float oldBalance;      // Balance before transaction
+    float newBalance;      // Balance after transaction
+    char message[200];     // Result message or error
 } TransactionResult;
 
-// Function declarations
+// Balance check operation
 TransactionResult checkAccountBalance(int cardNumber, const char* username);
+
+// Deposit operation
 TransactionResult performDeposit(int cardNumber, float amount, const char* username);
+
+// Withdrawal operation
 TransactionResult performWithdrawal(int cardNumber, float amount, const char* username);
+
+// Mini-statement operation
 TransactionResult getMiniStatement(int cardNumber, const char* username);
+
+// Money transfer operation (with transaction atomicity)
 TransactionResult performMoneyTransfer(int senderCardNumber, int receiverCardNumber, float amount, const char* username);
+
+// Alias for backward compatibility
 TransactionResult performFundTransfer(int cardNumber, int targetCardNumber, float amount, const char* username);
 
-// Function to log transaction details
-void logTransaction(int cardNumber, TransactionType type, float amount, bool success);
+// Transaction atomicity helpers
+int lockTransactionFiles();
+int unlockTransactionFiles();
+int backupAccountFiles();
+int restoreAccountFiles();
 
-// Helper function to write transaction log entries (renamed to avoid conflict)
-void writeTransactionDetails(const char* username, const char* transactionType, const char* details);
-
-// Function to generate a transaction receipt
+// Transaction logging
+void writeTransactionDetails(const char* username, const char* type, const char* details);
 void generateReceipt(int cardNumber, TransactionType type, float amount, float balance, const char* phoneNumber);
 
 #endif // TRANSACTION_MANAGER_H
