@@ -1,21 +1,52 @@
 #ifndef LOGGER_H
 #define LOGGER_H
 
-    // Log user activities
-void logActivity(const char *activity);
+/**
+ * Write a message to the error log
+ * 
+ * @param message The error message to log
+ */
+void writeErrorLog(const char *message);
 
-// Log error messages
-void writeErrorLog(const char *errorMsg);
+/**
+ * Write a message to the audit log
+ * 
+ * @param category The category of the audit entry (e.g., "AUTH", "TRANSACTION")
+ * @param message The message to log
+ */
+void writeAuditLog(const char *category, const char *message);
 
-// Log transaction details
-void writeTransactionLog(const char *accountHolderName, const char *operation, const char *details);
+/**
+ * Write an informational message to the log
+ * 
+ * @param message The informational message to log
+ */
+void writeInfoLog(const char *message);
 
-// Log audit information
-void writeAuditLog(const char *action, const char *details);
+/**
+ * Write a transaction to the transaction log
+ * 
+ * @param cardNumber The card number associated with the transaction
+ * @param transactionType The type of transaction (e.g., "Deposit", "Withdrawal")
+ * @param amount The transaction amount
+ * @param success Whether the transaction was successful (1) or failed (0)
+ */
+void writeTransactionLog(int cardNumber, const char *transactionType, float amount, int success);
 
-// Legacy logging functions
-void log_info(const char *fmt, ...);
-void log_warn(const char *fmt, ...);
-void log_error(const char *fmt, ...);
+/**
+ * Log a withdrawal for daily limit tracking
+ * 
+ * @param cardNumber The card number associated with the withdrawal
+ * @param amount The withdrawal amount
+ * @param date The date of the withdrawal (YYYY-MM-DD)
+ */
+void logWithdrawalForLimit(int cardNumber, float amount, const char *date);
+
+/**
+ * Clear a log file (e.g., for resetting daily withdrawals)
+ * 
+ * @param logFile The path to the log file to clear
+ */
+void clearLogFile(const char *logFile);
 
 #endif // LOGGER_H

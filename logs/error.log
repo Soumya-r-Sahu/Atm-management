@@ -1,0 +1,7 @@
+Log ID  | User ID  | Event Type                  | Event Details                                      | Event Timestamp       | Status
+---------|----------|----------------------------|---------------------------------------------------|----------------------|----------
+S50001   | C10001   | Multiple Wrong PIN Attempts| 2 incorrect PIN entries                           | 2025-04-26 09:28:45  | Resolved
+S50002   | C10002   | Suspicious Withdrawal      | Large withdrawal amount (₹5000) detected          | 2025-04-26 14:47:35  | Unresolved
+S50003   | Anonymous| System Error               | Database connection timeout                       | 2025-04-26 18:30:22  | Resolved
+S50004   | C10001   | Session Timeout            | User session expired while transaction in progress| 2025-04-27 10:15:40  | Resolved
+S50005   | Anonymous| Failed Login               | Invalid card number attempted                     | 2025-04-27 11:05:12  | Resolved

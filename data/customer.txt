@@ -1,0 +1,4 @@
+Customer ID | Name      | DOB        | Address                      | Email                  | Mobile Number | KYC Status | Status  | Created At           | Last Login
+------------|-----------|------------|------------------------------|------------------------|--------------|------------|---------|---------------------|--------------------
+C10001      | Soumya    | 1990-05-12 | 123 Main Street, Mumbai      | soumya@example.com     | 9876543210   | Completed  | Active  | 2025-01-01 09:00:00 | 2025-04-26 10:15:20
+C10002      | Rahul     | 1988-08-22 | 456 Park Avenue, Delhi       | rahul@example.com      | 8765432109   | Completed  | Active  | 2025-01-05 10:15:00 | 2025-04-25 14:30:45

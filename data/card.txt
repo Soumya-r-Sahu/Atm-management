@@ -1,0 +1,4 @@
+Card ID | Account ID | Card Number      | Card Type | Expiry Date | Status  | PIN Hash
+--------|------------|-----------------|-----------|-------------|---------|------------------------------------------
+D10001  | A10001     | 100041          | Debit     | 2026-05-31  | Active  | 5f4dcc3b5aa765d61d8327deb882cf99
+D10002  | A10002     | 106334          | Debit     | 2027-08-31  | Active  | 7c6a180b36896a0a8c02787eeafb0e4c

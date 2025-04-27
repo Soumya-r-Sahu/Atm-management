@@ -1,13 +1,11 @@
 #include "database.h"
 #include "../utils/logger.h"
+#include "../common/paths.h"
+#include "../utils/hash_utils.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
-
-#define CREDENTIALS_FILE "../data/credentials.txt"
-#define ACCOUNTING_FILE "../data/accounting.txt"
-#define WITHDRAWALS_FILE "../data/withdrawals.txt"
 
 // Helper function to get current date as a string (YYYY-MM-DD)
 static void getCurrentDate(char *buffer, size_t size) {
@@ -16,455 +14,901 @@ static void getCurrentDate(char *buffer, size_t size) {
     strftime(buffer, size, "%Y-%m-%d", t);
 }
 
-// Fetch the balance for a given card number
-float fetchBalance(int cardNumber) {
-    FILE *file = fopen(ACCOUNTING_FILE, "r");
-    if (file == NULL) {
-        writeErrorLog("Failed to open accounting file for balance check");
-        return -1;
-    }
-
-    int storedCardNumber;
-    float balance;
-    int found = 0;
-
-    while (fscanf(file, "%d | %f", &storedCardNumber, &balance) == 2) {
-        if (storedCardNumber == cardNumber) {
-            found = 1;
-            break;
-        }
-    }
-
-    fclose(file);
-    
-    if (!found) {
-        char logMsg[100];
-        sprintf(logMsg, "Card number %d not found in accounting file", cardNumber);
-        writeErrorLog(logMsg);
-        return -1;
-    }
-    
-    return balance;
+// Helper function to get current timestamp as a string (YYYY-MM-DD HH:MM:SS)
+static void getCurrentTimestamp(char *buffer, size_t size) {
+    time_t now = time(NULL);
+    struct tm *t = localtime(&now);
+    strftime(buffer, size, "%Y-%m-%d %H:%M:%S", t);
 }
 
-// Update the balance for a given card number
-int updateBalance(int cardNumber, float newBalance) {
-    FILE *file = fopen(ACCOUNTING_FILE, "r");
+// Check if a card number exists in the database
+bool doesCardExist(int cardNumber) {
+    FILE* file = fopen(CREDENTIALS_FILE, "r");
     if (file == NULL) {
-        writeErrorLog("Failed to open accounting file for balance update");
-        return 0;
-    }
-
-    FILE *tempFile = fopen("../data/temp_accounting.txt", "w");
-    if (tempFile == NULL) {
-        fclose(file);
-        writeErrorLog("Failed to create temporary accounting file");
-        return 0;
-    }
-
-    int storedCardNumber;
-    float balance;
-    int found = 0;
-
-    while (fscanf(file, "%d | %f", &storedCardNumber, &balance) == 2) {
-        if (storedCardNumber == cardNumber) {
-            fprintf(tempFile, "%-11d | %.2f\n", cardNumber, newBalance);
-            found = 1;
-        } else {
-            fprintf(tempFile, "%-11d | %.2f\n", storedCardNumber, balance);
-        }
-    }
-
-    fclose(file);
-    fclose(tempFile);
-
-    if (!found) {
-        remove("../data/temp_accounting.txt");
-        char logMsg[100];
-        sprintf(logMsg, "Card number %d not found in accounting file during balance update", cardNumber);
-        writeErrorLog(logMsg);
-        return 0;
-    }
-
-    // Replace the original file with the updated one
-    if (remove(ACCOUNTING_FILE) != 0 || 
-        rename("../data/temp_accounting.txt", ACCOUNTING_FILE) != 0) {
-        writeErrorLog("Failed to update accounting file");
-        return 0;
-    }
-
-    return 1;
-}
-
-// Validate a card number and PIN combination
-int validateCard(int cardNumber, int pin) {
-    if (!isCardActive(cardNumber)) {
-        return 0; // Card is not active
+        writeErrorLog("Failed to open credentials file");
+        return false;
     }
     
-    FILE *file = fopen(CREDENTIALS_FILE, "r");
-    if (file == NULL) {
-        writeErrorLog("Failed to open credentials file for validation");
-        return 0;
-    }
-
     char line[256];
+    bool found = false;
+    
     // Skip header lines
     fgets(line, sizeof(line), file);
     fgets(line, sizeof(line), file);
-
-    int storedCardNumber;
-    int storedPIN;
-    char storedUsername[50], storedStatus[10];
-    int valid = 0;
-
-    while (fscanf(file, "%49[^|] | %d | %d | %9s", 
-                 storedUsername, &storedCardNumber, &storedPIN, storedStatus) == 4) {
-        if (storedCardNumber == cardNumber) {
-            if (storedPIN == pin && strcmp(storedStatus, "Active") == 0) {
-                valid = 1;
+    
+    char cardID[10], accountID[10], cardNumberStr[20], cardType[10], expiryDate[15], status[10], pinHash[65];
+    
+    while (fgets(line, sizeof(line), file) != NULL) {
+        if (sscanf(line, "%s | %s | %s | %s | %s | %s | %s", 
+                   cardID, accountID, cardNumberStr, cardType, expiryDate, status, pinHash) >= 7) {
+            int storedCardNumber = atoi(cardNumberStr);
+            if (storedCardNumber == cardNumber) {
+                found = true;
+                break;
             }
-            break;
         }
-    }
-
-    fclose(file);
-    
-    // Log the validation attempt
-    if (valid) {
-        char logMsg[100];
-        sprintf(logMsg, "Successful validation for card %d", cardNumber);
-        writeAuditLog("VALIDATION", logMsg);
-    } else {
-        char logMsg[100];
-        sprintf(logMsg, "Failed validation for card %d", cardNumber);
-        writeErrorLog(logMsg);
     }
     
-    return valid;
-}
-
-// Check if a card is active
-int isCardActive(int cardNumber) {
-    FILE *file = fopen(CREDENTIALS_FILE, "r");
-    if (file == NULL) {
-        writeErrorLog("Failed to open credentials file for status check");
-        return 0;
-    }
-
-    char line[256];
-    // Skip header lines
-    fgets(line, sizeof(line), file);
-    fgets(line, sizeof(line), file);
-
-    int storedCardNumber;
-    int storedPIN;
-    char storedUsername[50], storedStatus[10];
-    int active = 0;
-
-    while (fscanf(file, "%49[^|] | %d | %d | %9s", 
-                 storedUsername, &storedCardNumber, &storedPIN, storedStatus) == 4) {
-        if (storedCardNumber == cardNumber) {
-            active = (strcmp(storedStatus, "Active") == 0);
-            break;
-        }
-    }
-
-    fclose(file);
-    return active;
-}
-
-// Get the name of the card holder
-int getCardHolderName(int cardNumber, char *name, int maxLen) {
-    FILE *file = fopen(CREDENTIALS_FILE, "r");
-    if (file == NULL) {
-        writeErrorLog("Failed to open credentials file for name lookup");
-        return 0;
-    }
-
-    char line[256];
-    // Skip header lines
-    fgets(line, sizeof(line), file);
-    fgets(line, sizeof(line), file);
-
-    int storedCardNumber;
-    int storedPIN;
-    char storedUsername[50], storedStatus[10];
-    int found = 0;
-
-    while (fscanf(file, "%49[^|] | %d | %d | %9s", 
-                 storedUsername, &storedCardNumber, &storedPIN, storedStatus) == 4) {
-        if (storedCardNumber == cardNumber) {
-            found = 1;
-            
-            // Trim leading and trailing whitespace
-            char *start = storedUsername;
-            while (*start == ' ') start++;
-            
-            char *end = start + strlen(start) - 1;
-            while (end > start && *end == ' ') end--;
-            *(end + 1) = '\0';
-            
-            strncpy(name, start, maxLen - 1);
-            name[maxLen - 1] = '\0'; // Ensure null termination
-            break;
-        }
-    }
-
     fclose(file);
     return found;
 }
 
-// Get the total withdrawals for a card on the current day
-float getDailyWithdrawals(int cardNumber) {
-    FILE *file = fopen(WITHDRAWALS_FILE, "r");
+// Check if a card is active
+bool isCardActive(int cardNumber) {
+    FILE* file = fopen(CREDENTIALS_FILE, "r");
     if (file == NULL) {
-        // File doesn't exist yet, no withdrawals
-        return 0.0f;
+        writeErrorLog("Failed to open credentials file");
+        return false;
     }
-
-    char currentDate[20];
-    getCurrentDate(currentDate, sizeof(currentDate));
-
+    
     char line[256];
-    float totalWithdrawals = 0.0f;
-
+    bool active = false;
+    
+    // Skip header lines
+    fgets(line, sizeof(line), file);
+    fgets(line, sizeof(line), file);
+    
+    char cardID[10], accountID[10], cardNumberStr[20], cardType[10], expiryDate[15], status[10], pinHash[65];
+    
     while (fgets(line, sizeof(line), file) != NULL) {
-        int storedCardNumber;
-        char dateStr[20];
-        float amount;
-
-        if (sscanf(line, "%d | %19s | %f", &storedCardNumber, dateStr, &amount) == 3) {
-            if (storedCardNumber == cardNumber && strcmp(dateStr, currentDate) == 0) {
-                totalWithdrawals += amount;
+        if (sscanf(line, "%s | %s | %s | %s | %s | %s | %s", 
+                   cardID, accountID, cardNumberStr, cardType, expiryDate, status, pinHash) >= 7) {
+            int storedCardNumber = atoi(cardNumberStr);
+            if (storedCardNumber == cardNumber) {
+                // Check if status is "Active"
+                if (strstr(status, "Active") != NULL) {
+                    active = true;
+                }
+                break;
             }
         }
     }
-
+    
     fclose(file);
-    return totalWithdrawals;
+    return active;
 }
 
-// Log a withdrawal transaction for the daily limit tracking
+// Validate card with PIN (legacy method, for backward compatibility)
+bool validateCard(int cardNumber, int pin) {
+    char pinStr[20];
+    sprintf(pinStr, "%d", pin);
+    char* pinHash = sha256_hash(pinStr);
+    bool result = validateCardWithHash(cardNumber, pinHash);
+    free(pinHash);
+    return result;
+}
+
+// Validate card with PIN hash
+bool validateCardWithHash(int cardNumber, const char* pinHash) {
+    if (pinHash == NULL) {
+        writeErrorLog("NULL PIN hash provided to validateCardWithHash");
+        return false;
+    }
+    
+    FILE* file = fopen(CREDENTIALS_FILE, "r");
+    if (file == NULL) {
+        writeErrorLog("Failed to open credentials file");
+        return false;
+    }
+    
+    char line[256];
+    bool valid = false;
+    
+    // Skip header lines
+    fgets(line, sizeof(line), file);
+    fgets(line, sizeof(line), file);
+    
+    char cardID[10], accountID[10], cardNumberStr[20], cardType[10], expiryDate[15], status[10], storedPinHash[65];
+    
+    while (fgets(line, sizeof(line), file) != NULL) {
+        if (sscanf(line, "%s | %s | %s | %s | %s | %s | %s", 
+                   cardID, accountID, cardNumberStr, cardType, expiryDate, status, storedPinHash) >= 7) {
+            int storedCardNumber = atoi(cardNumberStr);
+            if (storedCardNumber == cardNumber) {
+                if (strcmp(storedPinHash, pinHash) == 0) {
+                    valid = true;
+                }
+                break;
+            }
+        }
+    }
+    
+    fclose(file);
+    return valid;
+}
+
+// Update PIN for a card (legacy method)
+bool updatePIN(int cardNumber, int newPin) {
+    char pinStr[20];
+    sprintf(pinStr, "%d", newPin);
+    char* pinHash = sha256_hash(pinStr);
+    bool result = updatePINHash(cardNumber, pinHash);
+    free(pinHash);
+    return result;
+}
+
+// Update PIN hash for a card
+bool updatePINHash(int cardNumber, const char* pinHash) {
+    if (pinHash == NULL) {
+        writeErrorLog("NULL PIN hash provided to updatePINHash");
+        return false;
+    }
+    
+    FILE* file = fopen(CREDENTIALS_FILE, "r");
+    if (file == NULL) {
+        writeErrorLog("Failed to open credentials file");
+        return false;
+    }
+    
+    char tempFileName[100];
+    sprintf(tempFileName, "%s/temp_credentials.txt", isTestingMode() ? TEST_DATA_DIR : PROD_DATA_DIR "/temp");
+    
+    FILE* tempFile = fopen(tempFileName, "w");
+    if (tempFile == NULL) {
+        fclose(file);
+        writeErrorLog("Failed to create temporary credentials file");
+        return false;
+    }
+    
+    char line[256];
+    bool updated = false;
+    
+    // Copy header lines
+    fgets(line, sizeof(line), file);
+    fputs(line, tempFile);
+    fgets(line, sizeof(line), file);
+    fputs(line, tempFile);
+    
+    char cardID[10], accountID[10], cardNumberStr[20], cardType[10], expiryDate[15], status[10], oldPinHash[65];
+    
+    while (fgets(line, sizeof(line), file) != NULL) {
+        char lineCopy[256];
+        strcpy(lineCopy, line);
+        
+        if (sscanf(lineCopy, "%s | %s | %s | %s | %s | %s | %s", 
+                   cardID, accountID, cardNumberStr, cardType, expiryDate, status, oldPinHash) >= 7) {
+            int storedCardNumber = atoi(cardNumberStr);
+            if (storedCardNumber == cardNumber) {
+                // Update the PIN with hash
+                fprintf(tempFile, "%s | %s | %s | %s | %s | %s | %s\n", 
+                        cardID, accountID, cardNumberStr, cardType, expiryDate, status, pinHash);
+                updated = true;
+            } else {
+                fputs(line, tempFile);
+            }
+        } else {
+            fputs(line, tempFile);
+        }
+    }
+    
+    fclose(file);
+    fclose(tempFile);
+    
+    if (updated) {
+        // Replace original file with updated one
+        if (remove(CREDENTIALS_FILE) == 0 && 
+            rename(tempFileName, CREDENTIALS_FILE) == 0) {
+            
+            char logMsg[100];
+            sprintf(logMsg, "PIN hash updated for card %d", cardNumber);
+            writeAuditLog("SECURITY", logMsg);
+            return true;
+        }
+    }
+    
+    // Remove temp file if update was not successful
+    remove(tempFileName);
+    return false;
+}
+
+// Get card holder's name by looking up customer info by card number
+bool getCardHolderName(int cardNumber, char* name, size_t nameSize) {
+    if (name == NULL || nameSize <= 0) {
+        return false;
+    }
+    
+    // First, find the account ID from the card number
+    FILE* cardFile = fopen(CREDENTIALS_FILE, "r");
+    if (cardFile == NULL) {
+        writeErrorLog("Failed to open credentials file");
+        return false;
+    }
+    
+    char line[256];
+    char accountID[10] = "";
+    
+    // Skip header lines
+    fgets(line, sizeof(line), cardFile);
+    fgets(line, sizeof(line), cardFile);
+    
+    char cardID[10], accID[10], cardNumberStr[20], cardType[10], expiryDate[15], status[10], pinHash[65];
+    
+    while (fgets(line, sizeof(line), cardFile) != NULL) {
+        if (sscanf(line, "%s | %s | %s | %s | %s | %s | %s", 
+                   cardID, accID, cardNumberStr, cardType, expiryDate, status, pinHash) >= 7) {
+            int storedCardNumber = atoi(cardNumberStr);
+            if (storedCardNumber == cardNumber) {
+                strcpy(accountID, accID);
+                break;
+            }
+        }
+    }
+    
+    fclose(cardFile);
+    
+    if (strlen(accountID) == 0) {
+        return false; // Card number not found
+    }
+    
+    // Now find the customer ID from the account ID
+    FILE* accountFile = fopen(ACCOUNTING_FILE, "r");
+    if (accountFile == NULL) {
+        writeErrorLog("Failed to open accounting file");
+        return false;
+    }
+    
+    char customerID[10] = "";
+    
+    // Skip header lines
+    fgets(line, sizeof(line), accountFile);
+    fgets(line, sizeof(line), accountFile);
+    
+    char accIDFromFile[10], custID[10], accountType[20], balance[20], branchCode[10];
+    char accountStatus[10], createdAt[30], lastTransaction[30];
+    
+    while (fgets(line, sizeof(line), accountFile) != NULL) {
+        if (sscanf(line, "%s | %s | %s | %s | %s | %s | %s | %s", 
+                   accIDFromFile, custID, accountType, balance, branchCode, accountStatus, 
+                   createdAt, lastTransaction) >= 8) {
+            if (strcmp(accountID, accIDFromFile) == 0) {
+                strcpy(customerID, custID);
+                break;
+            }
+        }
+    }
+    
+    fclose(accountFile);
+    
+    if (strlen(customerID) == 0) {
+        return false; // Account ID not found
+    }
+    
+    // Finally, get the customer name using the customer ID
+    FILE* customerFile = fopen(isTestingMode() ? 
+                             TEST_DATA_DIR "/test_customer.txt" : 
+                             PROD_DATA_DIR "/customer.txt", "r");
+    if (customerFile == NULL) {
+        writeErrorLog("Failed to open customer file");
+        return false;
+    }
+    
+    bool found = false;
+    
+    // Skip header lines
+    fgets(line, sizeof(line), customerFile);
+    fgets(line, sizeof(line), customerFile);
+    
+    char custIDFromFile[10], custName[50], dob[15], address[100], email[50];
+    char mobile[15], kycStatus[15], custStatus[10], custCreatedAt[30], lastLogin[30];
+    
+    while (fgets(line, sizeof(line), customerFile) != NULL) {
+        if (sscanf(line, "%s | %s | %s | %[^|] | %s | %s | %s | %s | %s | %s", 
+                   custIDFromFile, custName, dob, address, email, mobile, 
+                   kycStatus, custStatus, custCreatedAt, lastLogin) >= 10) {
+            if (strcmp(customerID, custIDFromFile) == 0) {
+                strncpy(name, custName, nameSize - 1);
+                name[nameSize - 1] = '\0';
+                found = true;
+                break;
+            }
+        }
+    }
+    
+    fclose(customerFile);
+    return found;
+}
+
+// Get card holder's phone number by looking up customer info
+bool getCardHolderPhone(int cardNumber, char* phone, size_t phoneSize) {
+    if (phone == NULL || phoneSize <= 0) {
+        return false;
+    }
+    
+    // First, find the account ID from the card number
+    FILE* cardFile = fopen(CREDENTIALS_FILE, "r");
+    if (cardFile == NULL) {
+        writeErrorLog("Failed to open credentials file");
+        return false;
+    }
+    
+    char line[256];
+    char accountID[10] = "";
+    
+    // Skip header lines
+    fgets(line, sizeof(line), cardFile);
+    fgets(line, sizeof(line), cardFile);
+    
+    char cardID[10], accID[10], cardNumberStr[20], cardType[10], expiryDate[15], status[10], pinHash[65];
+    
+    while (fgets(line, sizeof(line), cardFile) != NULL) {
+        if (sscanf(line, "%s | %s | %s | %s | %s | %s | %s", 
+                   cardID, accID, cardNumberStr, cardType, expiryDate, status, pinHash) >= 7) {
+            int storedCardNumber = atoi(cardNumberStr);
+            if (storedCardNumber == cardNumber) {
+                strcpy(accountID, accID);
+                break;
+            }
+        }
+    }
+    
+    fclose(cardFile);
+    
+    if (strlen(accountID) == 0) {
+        return false; // Card number not found
+    }
+    
+    // Now find the customer ID from the account ID
+    FILE* accountFile = fopen(ACCOUNTING_FILE, "r");
+    if (accountFile == NULL) {
+        writeErrorLog("Failed to open accounting file");
+        return false;
+    }
+    
+    char customerID[10] = "";
+    
+    // Skip header lines
+    fgets(line, sizeof(line), accountFile);
+    fgets(line, sizeof(line), accountFile);
+    
+    char accIDFromFile[10], custID[10], accountType[20], balance[20], branchCode[10];
+    char accountStatus[10], createdAt[30], lastTransaction[30];
+    
+    while (fgets(line, sizeof(line), accountFile) != NULL) {
+        if (sscanf(line, "%s | %s | %s | %s | %s | %s | %s | %s", 
+                   accIDFromFile, custID, accountType, balance, branchCode, accountStatus, 
+                   createdAt, lastTransaction) >= 8) {
+            if (strcmp(accountID, accIDFromFile) == 0) {
+                strcpy(customerID, custID);
+                break;
+            }
+        }
+    }
+    
+    fclose(accountFile);
+    
+    if (strlen(customerID) == 0) {
+        return false; // Account ID not found
+    }
+    
+    // Finally, get the customer phone using the customer ID
+    FILE* customerFile = fopen(isTestingMode() ? 
+                             TEST_DATA_DIR "/test_customer.txt" : 
+                             PROD_DATA_DIR "/customer.txt", "r");
+    if (customerFile == NULL) {
+        writeErrorLog("Failed to open customer file");
+        return false;
+    }
+    
+    bool found = false;
+    
+    // Skip header lines
+    fgets(line, sizeof(line), customerFile);
+    fgets(line, sizeof(line), customerFile);
+    
+    char custIDFromFile[10], custName[50], dob[15], address[100], email[50];
+    char mobile[15], kycStatus[15], custStatus[10], custCreatedAt[30], lastLogin[30];
+    
+    while (fgets(line, sizeof(line), customerFile) != NULL) {
+        if (sscanf(line, "%s | %s | %s | %[^|] | %s | %s | %s | %s | %s | %s", 
+                   custIDFromFile, custName, dob, address, email, mobile, 
+                   kycStatus, custStatus, custCreatedAt, lastLogin) >= 10) {
+            if (strcmp(customerID, custIDFromFile) == 0) {
+                strncpy(phone, mobile, phoneSize - 1);
+                phone[phoneSize - 1] = '\0';
+                found = true;
+                break;
+            }
+        }
+    }
+    
+    fclose(customerFile);
+    return found;
+}
+
+// Fetch account balance for a card
+float fetchBalance(int cardNumber) {
+    // First, find the account ID from the card number
+    FILE* cardFile = fopen(CREDENTIALS_FILE, "r");
+    if (cardFile == NULL) {
+        writeErrorLog("Failed to open credentials file");
+        return -1.0f;
+    }
+    
+    char line[256];
+    char accountID[10] = "";
+    
+    // Skip header lines
+    fgets(line, sizeof(line), cardFile);
+    fgets(line, sizeof(line), cardFile);
+    
+    char cardID[10], accID[10], cardNumberStr[20], cardType[10], expiryDate[15], status[10], pinHash[65];
+    
+    while (fgets(line, sizeof(line), cardFile) != NULL) {
+        if (sscanf(line, "%s | %s | %s | %s | %s | %s | %s", 
+                   cardID, accID, cardNumberStr, cardType, expiryDate, status, pinHash) >= 7) {
+            int storedCardNumber = atoi(cardNumberStr);
+            if (storedCardNumber == cardNumber) {
+                strcpy(accountID, accID);
+                break;
+            }
+        }
+    }
+    
+    fclose(cardFile);
+    
+    if (strlen(accountID) == 0) {
+        return -1.0f; // Card number not found
+    }
+    
+    // Now get the balance from the account ID
+    FILE* accountFile = fopen(ACCOUNTING_FILE, "r");
+    if (accountFile == NULL) {
+        writeErrorLog("Failed to open accounting file");
+        return -1.0f;
+    }
+    
+    float balance = -1.0f;
+    
+    // Skip header lines
+    fgets(line, sizeof(line), accountFile);
+    fgets(line, sizeof(line), accountFile);
+    
+    char accIDFromFile[10], custID[10], accountType[20], balanceStr[20], branchCode[10];
+    char accountStatus[10], createdAt[30], lastTransaction[30];
+    
+    while (fgets(line, sizeof(line), accountFile) != NULL) {
+        if (sscanf(line, "%s | %s | %s | %s | %s | %s | %s | %s", 
+                   accIDFromFile, custID, accountType, balanceStr, branchCode, accountStatus, 
+                   createdAt, lastTransaction) >= 8) {
+            if (strcmp(accountID, accIDFromFile) == 0) {
+                balance = atof(balanceStr);
+                break;
+            }
+        }
+    }
+    
+    fclose(accountFile);
+    return balance;
+}
+
+// Update account balance for a card
+bool updateBalance(int cardNumber, float newBalance) {
+    // First, find the account ID from the card number
+    FILE* cardFile = fopen(CREDENTIALS_FILE, "r");
+    if (cardFile == NULL) {
+        writeErrorLog("Failed to open credentials file");
+        return false;
+    }
+    
+    char line[256];
+    char accountID[10] = "";
+    
+    // Skip header lines
+    fgets(line, sizeof(line), cardFile);
+    fgets(line, sizeof(line), cardFile);
+    
+    char cardID[10], accID[10], cardNumberStr[20], cardType[10], expiryDate[15], status[10], pinHash[65];
+    
+    while (fgets(line, sizeof(line), cardFile) != NULL) {
+        if (sscanf(line, "%s | %s | %s | %s | %s | %s | %s", 
+                   cardID, accID, cardNumberStr, cardType, expiryDate, status, pinHash) >= 7) {
+            int storedCardNumber = atoi(cardNumberStr);
+            if (storedCardNumber == cardNumber) {
+                strcpy(accountID, accID);
+                break;
+            }
+        }
+    }
+    
+    fclose(cardFile);
+    
+    if (strlen(accountID) == 0) {
+        return false; // Card number not found
+    }
+    
+    // Now update the balance in the accounting file
+    FILE* accountFile = fopen(ACCOUNTING_FILE, "r");
+    if (accountFile == NULL) {
+        writeErrorLog("Failed to open accounting file");
+        return false;
+    }
+    
+    char tempFileName[100];
+    sprintf(tempFileName, "%s/temp_accounting.txt", isTestingMode() ? TEST_DATA_DIR : PROD_DATA_DIR "/temp");
+    
+    FILE* tempFile = fopen(tempFileName, "w");
+    if (tempFile == NULL) {
+        fclose(accountFile);
+        writeErrorLog("Failed to create temporary accounting file");
+        return false;
+    }
+    
+    bool updated = false;
+    
+    // Copy header lines
+    fgets(line, sizeof(line), accountFile);
+    fputs(line, tempFile);
+    fgets(line, sizeof(line), accountFile);
+    fputs(line, tempFile);
+    
+    // Get current timestamp for last transaction
+    char timestamp[30];
+    getCurrentTimestamp(timestamp, sizeof(timestamp));
+    
+    char accIDFromFile[10], custID[10], accountType[20], balanceStr[20], branchCode[10];
+    char accountStatus[10], createdAt[30], lastTransaction[30];
+    
+    while (fgets(line, sizeof(line), accountFile) != NULL) {
+        char lineCopy[256];
+        strcpy(lineCopy, line);
+        
+        if (sscanf(lineCopy, "%s | %s | %s | %s | %s | %s | %s | %s", 
+                   accIDFromFile, custID, accountType, balanceStr, branchCode, accountStatus, 
+                   createdAt, lastTransaction) >= 8) {
+            if (strcmp(accountID, accIDFromFile) == 0) {
+                // Update the balance and last transaction time
+                fprintf(tempFile, "%-9s | %-10s | %-12s | %-9.2f | %-10s | %-13s | %-21s | %-s\n", 
+                        accIDFromFile, custID, accountType, newBalance, branchCode, accountStatus, 
+                        createdAt, timestamp);
+                updated = true;
+            } else {
+                fputs(line, tempFile);
+            }
+        } else {
+            fputs(line, tempFile);
+        }
+    }
+    
+    fclose(accountFile);
+    fclose(tempFile);
+    
+    if (updated) {
+        // Replace original file with updated one
+        if (remove(ACCOUNTING_FILE) == 0 && 
+            rename(tempFileName, ACCOUNTING_FILE) == 0) {
+            
+            char logMsg[100];
+            sprintf(logMsg, "Balance updated for account %s: %.2f", accountID, newBalance);
+            writeAuditLog("ACCOUNTING", logMsg);
+            return true;
+        }
+    }
+    
+    // Remove temp file if update was not successful
+    remove(tempFileName);
+    return false;
+}
+
+// Log a withdrawal for daily limit tracking
 void logWithdrawal(int cardNumber, float amount) {
-    FILE *file = fopen(WITHDRAWALS_FILE, "a");
+    char date[20];
+    getCurrentDate(date, sizeof(date));
+    
+    // Withdrawals log file path
+    char withdrawalsLogPath[200];
+    sprintf(withdrawalsLogPath, "%s/withdrawals.log", 
+            isTestingMode() ? TEST_DATA_DIR : PROD_DATA_DIR "/../logs");
+    
+    FILE* file = fopen(withdrawalsLogPath, "a");
     if (file == NULL) {
         writeErrorLog("Failed to open withdrawals log file");
         return;
     }
-
-    char currentDate[20];
-    getCurrentDate(currentDate, sizeof(currentDate));
-
-    fprintf(file, "%d | %s | %.2f\n", cardNumber, currentDate, amount);
+    
+    // Log the withdrawal in format: Card Number | Date | Amount
+    fprintf(file, "%-11d | %-10s | %.2f\n", cardNumber, date, amount);
+    
     fclose(file);
+    
+    // Also log to transaction log
+    logTransaction(cardNumber, TRANSACTION_WITHDRAWAL, amount, true);
 }
 
-// Reset daily withdrawals (typically called at midnight)
-void resetDailyWithdrawals() {
-    // In a real system, we might archive the old data rather than deleting it
-    FILE *file = fopen(WITHDRAWALS_FILE, "w");
+// Get total withdrawals for a card on the current day
+float getDailyWithdrawals(int cardNumber) {
+    char date[20];
+    getCurrentDate(date, sizeof(date));
+    
+    // Withdrawals log file path
+    char withdrawalsLogPath[200];
+    sprintf(withdrawalsLogPath, "%s/withdrawals.log", 
+            isTestingMode() ? TEST_DATA_DIR : PROD_DATA_DIR "/../logs");
+    
+    FILE* file = fopen(withdrawalsLogPath, "r");
     if (file == NULL) {
-        writeErrorLog("Failed to reset withdrawals log file");
-        return;
+        return 0.0f;  // No withdrawals or file doesn't exist yet
+    }
+    
+    char line[100];
+    float totalWithdrawals = 0.0f;
+    
+    while (fgets(line, sizeof(line), file) != NULL) {
+        int storedCardNumber;
+        char storedDate[20];
+        float storedAmount;
+        
+        if (sscanf(line, "%d | %s | %f", &storedCardNumber, storedDate, &storedAmount) == 3) {
+            if (storedCardNumber == cardNumber && strcmp(storedDate, date) == 0) {
+                totalWithdrawals += storedAmount;
+            }
+        }
     }
     
     fclose(file);
-    writeAuditLog("SYSTEM", "Daily withdrawal limits have been reset");
-}
-
-// Update PIN for a card
-int updatePIN(int cardNumber, int newPIN) {
-    FILE *file = fopen(CREDENTIALS_FILE, "r");
-    if (file == NULL) {
-        writeErrorLog("Failed to open credentials file for PIN update");
-        return 0;
-    }
-
-    FILE *tempFile = fopen("../data/temp_credentials.txt", "w");
-    if (tempFile == NULL) {
-        fclose(file);
-        writeErrorLog("Failed to create temporary credentials file");
-        return 0;
-    }
-
-    char line[256];
-    int modified = 0;
-
-    // Copy header lines
-    if (fgets(line, sizeof(line), file))
-        fprintf(tempFile, "%s", line);
-    if (fgets(line, sizeof(line), file))
-        fprintf(tempFile, "%s", line);
-
-    // Copy or modify each account line
-    int storedCardNumber;
-    int storedPIN;
-    char storedUsername[50], storedStatus[10];
-
-    while (fscanf(file, "%49[^|] | %d | %d | %9s", 
-                 storedUsername, &storedCardNumber, &storedPIN, storedStatus) == 4) {
-        if (storedCardNumber == cardNumber) {
-            fprintf(tempFile, "%-20s | %-11d | %-4d | %-9s\n", 
-                   storedUsername, storedCardNumber, newPIN, storedStatus);
-            modified = 1;
-        } else {
-            fprintf(tempFile, "%-20s | %-11d | %-4d | %-9s\n", 
-                   storedUsername, storedCardNumber, storedPIN, storedStatus);
-        }
-    }
-
-    fclose(file);
-    fclose(tempFile);
-
-    if (!modified) {
-        remove("../data/temp_credentials.txt");
-        writeErrorLog("Card not found for PIN update");
-        return 0;
-    }
-
-    // Replace the original file
-    if (remove(CREDENTIALS_FILE) != 0 || 
-        rename("../data/temp_credentials.txt", CREDENTIALS_FILE) != 0) {
-        writeErrorLog("Failed to update credentials file for PIN change");
-        return 0;
-    }
-
-    // Log the PIN change
-    char logMsg[100];
-    sprintf(logMsg, "PIN updated for card %d", cardNumber);
-    writeAuditLog("ACCOUNT", logMsg);
-
-    return 1;
+    return totalWithdrawals;
 }
 
 // Block a card
-int blockCard(int cardNumber) {
-    FILE *file = fopen(CREDENTIALS_FILE, "r");
+bool blockCard(int cardNumber) {
+    FILE* file = fopen(CREDENTIALS_FILE, "r");
     if (file == NULL) {
-        writeErrorLog("Failed to open credentials file for card blocking");
-        return 0;
+        writeErrorLog("Failed to open credentials file");
+        return false;
     }
-
-    FILE *tempFile = fopen("../data/temp_credentials.txt", "w");
+    
+    char tempFileName[100];
+    sprintf(tempFileName, "%s/temp_credentials.txt", isTestingMode() ? TEST_DATA_DIR : PROD_DATA_DIR "/temp");
+    
+    FILE* tempFile = fopen(tempFileName, "w");
     if (tempFile == NULL) {
         fclose(file);
         writeErrorLog("Failed to create temporary credentials file");
-        return 0;
+        return false;
     }
-
+    
     char line[256];
-    int modified = 0;
-
+    bool updated = false;
+    
     // Copy header lines
-    if (fgets(line, sizeof(line), file))
-        fprintf(tempFile, "%s", line);
-    if (fgets(line, sizeof(line), file))
-        fprintf(tempFile, "%s", line);
-
-    // Copy or modify each account line
-    int storedCardNumber;
-    int storedPIN;
-    char storedUsername[50], storedStatus[10];
-
-    while (fscanf(file, "%49[^|] | %d | %d | %9s", 
-                 storedUsername, &storedCardNumber, &storedPIN, storedStatus) == 4) {
-        if (storedCardNumber == cardNumber) {
-            fprintf(tempFile, "%-20s | %-11d | %-4d | %-9s\n", 
-                   storedUsername, storedCardNumber, storedPIN, "Blocked");
-            modified = 1;
+    fgets(line, sizeof(line), file);
+    fputs(line, tempFile);
+    fgets(line, sizeof(line), file);
+    fputs(line, tempFile);
+    
+    char cardID[10], accountID[10], cardNumberStr[20], cardType[10], expiryDate[15], status[10], pinHash[65];
+    
+    while (fgets(line, sizeof(line), file) != NULL) {
+        char lineCopy[256];
+        strcpy(lineCopy, line);
+        
+        if (sscanf(lineCopy, "%s | %s | %s | %s | %s | %s | %s", 
+                   cardID, accountID, cardNumberStr, cardType, expiryDate, status, pinHash) >= 7) {
+            int storedCardNumber = atoi(cardNumberStr);
+            if (storedCardNumber == cardNumber) {
+                // Update the status to blocked
+                fprintf(tempFile, "%s | %s | %s | %s | %s | %-7s | %s\n", 
+                        cardID, accountID, cardNumberStr, cardType, expiryDate, "Blocked", pinHash);
+                updated = true;
+            } else {
+                fputs(line, tempFile);
+            }
         } else {
-            fprintf(tempFile, "%-20s | %-11d | %-4d | %-9s\n", 
-                   storedUsername, storedCardNumber, storedPIN, storedStatus);
+            fputs(line, tempFile);
         }
     }
-
+    
     fclose(file);
     fclose(tempFile);
-
-    if (!modified) {
-        remove("../data/temp_credentials.txt");
-        writeErrorLog("Card not found for blocking");
-        return 0;
+    
+    if (updated) {
+        // Replace original file with updated one
+        if (remove(CREDENTIALS_FILE) == 0 && 
+            rename(tempFileName, CREDENTIALS_FILE) == 0) {
+            
+            char logMsg[100];
+            sprintf(logMsg, "Card %d has been blocked", cardNumber);
+            writeAuditLog("SECURITY", logMsg);
+            return true;
+        }
     }
-
-    // Replace the original file
-    if (remove(CREDENTIALS_FILE) != 0 || 
-        rename("../data/temp_credentials.txt", CREDENTIALS_FILE) != 0) {
-        writeErrorLog("Failed to update credentials file for card blocking");
-        return 0;
-    }
-
-    // Log the card blocking
-    char logMsg[100];
-    sprintf(logMsg, "Card %d has been blocked", cardNumber);
-    writeAuditLog("ACCOUNT", logMsg);
-
-    return 1;
+    
+    // Remove temp file if update was not successful
+    remove(tempFileName);
+    return false;
 }
 
 // Unblock a card
-int unblockCard(int cardNumber) {
-    FILE *file = fopen(CREDENTIALS_FILE, "r");
+bool unblockCard(int cardNumber) {
+    FILE* file = fopen(CREDENTIALS_FILE, "r");
     if (file == NULL) {
-        writeErrorLog("Failed to open credentials file for card unblocking");
-        return 0;
+        writeErrorLog("Failed to open credentials file");
+        return false;
     }
-
-    FILE *tempFile = fopen("../data/temp_credentials.txt", "w");
+    
+    char tempFileName[100];
+    sprintf(tempFileName, "%s/temp_credentials.txt", isTestingMode() ? TEST_DATA_DIR : PROD_DATA_DIR "/temp");
+    
+    FILE* tempFile = fopen(tempFileName, "w");
     if (tempFile == NULL) {
         fclose(file);
         writeErrorLog("Failed to create temporary credentials file");
-        return 0;
+        return false;
     }
-
+    
     char line[256];
-    int modified = 0;
-
+    bool updated = false;
+    
     // Copy header lines
-    if (fgets(line, sizeof(line), file))
-        fprintf(tempFile, "%s", line);
-    if (fgets(line, sizeof(line), file))
-        fprintf(tempFile, "%s", line);
-
-    // Copy or modify each account line
-    int storedCardNumber;
-    int storedPIN;
-    char storedUsername[50], storedStatus[10];
-
-    while (fscanf(file, "%49[^|] | %d | %d | %9s", 
-                 storedUsername, &storedCardNumber, &storedPIN, storedStatus) == 4) {
-        if (storedCardNumber == cardNumber) {
-            fprintf(tempFile, "%-20s | %-11d | %-4d | %-9s\n", 
-                   storedUsername, storedCardNumber, storedPIN, "Active");
-            modified = 1;
+    fgets(line, sizeof(line), file);
+    fputs(line, tempFile);
+    fgets(line, sizeof(line), file);
+    fputs(line, tempFile);
+    
+    char cardID[10], accountID[10], cardNumberStr[20], cardType[10], expiryDate[15], status[10], pinHash[65];
+    
+    while (fgets(line, sizeof(line), file) != NULL) {
+        char lineCopy[256];
+        strcpy(lineCopy, line);
+        
+        if (sscanf(lineCopy, "%s | %s | %s | %s | %s | %s | %s", 
+                   cardID, accountID, cardNumberStr, cardType, expiryDate, status, pinHash) >= 7) {
+            int storedCardNumber = atoi(cardNumberStr);
+            if (storedCardNumber == cardNumber) {
+                // Update the status to active
+                fprintf(tempFile, "%s | %s | %s | %s | %s | %-7s | %s\n", 
+                        cardID, accountID, cardNumberStr, cardType, expiryDate, "Active", pinHash);
+                updated = true;
+            } else {
+                fputs(line, tempFile);
+            }
         } else {
-            fprintf(tempFile, "%-20s | %-11d | %-4d | %-9s\n", 
-                   storedUsername, storedCardNumber, storedPIN, storedStatus);
+            fputs(line, tempFile);
         }
     }
-
+    
     fclose(file);
     fclose(tempFile);
-
-    if (!modified) {
-        remove("../data/temp_credentials.txt");
-        writeErrorLog("Card not found for unblocking");
-        return 0;
+    
+    if (updated) {
+        // Replace original file with updated one
+        if (remove(CREDENTIALS_FILE) == 0 && 
+            rename(tempFileName, CREDENTIALS_FILE) == 0) {
+            
+            char logMsg[100];
+            sprintf(logMsg, "Card %d has been unblocked", cardNumber);
+            writeAuditLog("SECURITY", logMsg);
+            return true;
+        }
     }
+    
+    // Remove temp file if update was not successful
+    remove(tempFileName);
+    return false;
+}
 
-    // Replace the original file
-    if (remove(CREDENTIALS_FILE) != 0 || 
-        rename("../data/temp_credentials.txt", CREDENTIALS_FILE) != 0) {
-        writeErrorLog("Failed to update credentials file for card unblocking");
-        return 0;
+// Log a transaction to the transactions log
+void logTransaction(int cardNumber, TransactionType type, float amount, bool success) {
+    // Get account ID from card number
+    char accountID[10] = "";
+    
+    FILE* cardFile = fopen(CREDENTIALS_FILE, "r");
+    if (cardFile != NULL) {
+        char line[256];
+        
+        // Skip header lines
+        fgets(line, sizeof(line), cardFile);
+        fgets(line, sizeof(line), cardFile);
+        
+        char cardID[10], accID[10], cardNumberStr[20], cardType[10], expiryDate[15], status[10], pinHash[65];
+        
+        while (fgets(line, sizeof(line), cardFile) != NULL) {
+            if (sscanf(line, "%s | %s | %s | %s | %s | %s | %s", 
+                       cardID, accID, cardNumberStr, cardType, expiryDate, status, pinHash) >= 7) {
+                int storedCardNumber = atoi(cardNumberStr);
+                if (storedCardNumber == cardNumber) {
+                    strcpy(accountID, accID);
+                    break;
+                }
+            }
+        }
+        
+        fclose(cardFile);
     }
-
-    // Log the card unblocking
-    char logMsg[100];
-    sprintf(logMsg, "Card %d has been unblocked", cardNumber);
-    writeAuditLog("ACCOUNT", logMsg);
-
-    return 1;
+    
+    // If account ID not found, use card number as a fallback
+    if (strlen(accountID) == 0) {
+        sprintf(accountID, "C%d", cardNumber);
+    }
+    
+    // Generate transaction ID
+    static int transactionCount = 0;
+    char transactionID[10];
+    sprintf(transactionID, "T%d", 60000 + (++transactionCount));
+    
+    // Get current timestamp
+    char timestamp[30];
+    getCurrentTimestamp(timestamp, sizeof(timestamp));
+    
+    // Get transaction type string
+    char transactionTypeStr[20];
+    switch (type) {
+        case TRANSACTION_BALANCE_CHECK:
+            strcpy(transactionTypeStr, "Balance Check");
+            break;
+        case TRANSACTION_DEPOSIT:
+            strcpy(transactionTypeStr, "Deposit");
+            break;
+        case TRANSACTION_WITHDRAWAL:
+            strcpy(transactionTypeStr, "Withdrawal");
+            break;
+        case TRANSACTION_PIN_CHANGE:
+            strcpy(transactionTypeStr, "PIN Change");
+            break;
+        case TRANSACTION_MINI_STATEMENT:
+            strcpy(transactionTypeStr, "Mini Statement");
+            break;
+        case TRANSACTION_MONEY_TRANSFER:
+            strcpy(transactionTypeStr, "Transfer");
+            break;
+        case TRANSACTION_CARD_REQUEST:
+            strcpy(transactionTypeStr, "Card Request");
+            break;
+        default:
+            strcpy(transactionTypeStr, "Other");
+    }
+    
+    // Format transaction remarks
+    char remarks[50];
+    if (type == TRANSACTION_BALANCE_CHECK || type == TRANSACTION_MINI_STATEMENT) {
+        strcpy(remarks, "Information Request");
+    } else if (type == TRANSACTION_DEPOSIT) {
+        strcpy(remarks, "Cash Deposit");
+    } else if (type == TRANSACTION_WITHDRAWAL) {
+        strcpy(remarks, "ATM Withdrawal");
+    } else if (type == TRANSACTION_PIN_CHANGE) {
+        strcpy(remarks, "Security Update");
+    } else if (type == TRANSACTION_MONEY_TRANSFER) {
+        strcpy(remarks, "Fund Transfer");
+    } else {
+        strcpy(remarks, "General Transaction");
+    }
+    
+    // Open transactions log file
+    char transactionsLogPath[200];
+    sprintf(transactionsLogPath, "%s/transactions.log", 
+            isTestingMode() ? TEST_DATA_DIR : PROD_DATA_DIR "/../logs");
+    
+    FILE* file = fopen(transactionsLogPath, "a");
+    if (file == NULL) {
+        writeErrorLog("Failed to open transactions log file");
+        return;
+    }
+    
+    // Log the transaction
+    fprintf(file, "%-14s | %-10s | %-15s | %-8.2f | %-19s | %-17s | %s\n", 
+            transactionID, accountID, transactionTypeStr, amount, timestamp, 
+            success ? "Success" : "Failed", remarks);
+    
+    fclose(file);
 }
 

@@ -1,0 +1,381 @@
+#include "admin_interface.h"
+#include "admin_menu.h"
+#include "admin_operations.h"
+#include "admin_db.h"
+#include "../utils/logger.h"
+#include "../config/config_manager.h"
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <stdbool.h>
+
+// File paths definition
+#define ADMIN_CREDENTIALS_FILE "../data/admin_credentials.txt"
+
+// Process admin role and display appropriate menu
+void processByAdminRole(const char* role) {
+    // Load system configurations
+    if (!initializeConfigs()) {
+        printf("Warning: Failed to load system configurations. Using defaults.\n");
+    }
+    
+    int choice, isLoggedIn = 1;
+    
+    // Admin menu loop - the menu options will be limited based on role
+    while (isLoggedIn) {
+        // Clear screen for better UI
+        #ifdef _WIN32
+        system("cls");
+        #else
+        system("clear");
+        #endif
+        
+        printf("\n===== ATM Administration Panel (%s) =====\n", role);
+        
+        // Display different menu options based on role
+        if (strcmp(role, "SuperAdmin") == 0) {
+            // Super Admin gets all options
+            printf("1. Dashboard\n");
+            printf("2. Cash Management\n");
+            printf("3. Transaction Management\n");
+            printf("4. User Management\n");
+            printf("5. ATM Maintenance\n");
+            printf("6. Security Management\n");
+            printf("7. Settings\n");
+            printf("8. Notifications and Alerts\n");
+            printf("9. Audit Logs\n");
+            printf("10. System Configurations\n");
+            printf("11. Exit\n");
+        } 
+        else if (strcmp(role, "ATMAdmin") == 0) {
+            // ATM Admin gets access to ATM-specific operations
+            printf("1. Dashboard\n");
+            printf("2. Cash Management\n");
+            printf("3. ATM Maintenance\n");
+            printf("4. Transaction Management (View Only)\n");
+            printf("5. Settings\n");
+            printf("6. Exit\n");
+        }
+        else if (strcmp(role, "UserAdmin") == 0) {
+            // User Admin gets access to user management operations
+            printf("1. Dashboard (Limited)\n");
+            printf("2. User Management\n");
+            printf("3. Transaction Management (Limited)\n");
+            printf("4. Exit\n");
+        }
+        else {
+            // Default limited menu for unknown roles
+            printf("1. Dashboard (Limited)\n");
+            printf("2. Exit\n");
+        }
+        
+        printf("Enter your choice: ");
+        
+        if (scanf("%d", &choice) != 1) {
+            while (getchar() != '\n'); // Clear input buffer
+            printf("Invalid input. Please enter a number.\n");
+            continue;
+        }
+        
+        // Clear input buffer
+        while (getchar() != '\n');
+        
+        // Process choice based on role
+        if (strcmp(role, "SuperAdmin") == 0) {
+            switch (choice) {
+                case 1: 
+                    displayDashboard(); 
+                    break;
+                case 2: 
+                    manageCash(); 
+                    break;
+                case 3: 
+                    manageTransactions(); 
+                    break;
+                case 4: 
+                    manageUsers(); 
+                    break;
+                case 5: 
+                    atmMaintenance(); 
+                    break;
+                case 6: 
+                    securityManagement(); 
+                    break;
+                case 7: 
+                    manageSettings(); 
+                    break;
+                case 8:
+                    manageNotifications();
+                    break;
+                case 9:
+                    viewAuditLogs();
+                    break;
+                case 10:
+                    manageSystemConfigurations();
+                    break;
+                case 11:
+                    isLoggedIn = 0;
+                    writeAuditLog("ADMIN", "SuperAdmin logout");
+                    break;
+                default:
+                    printf("\nInvalid choice. Please try again.\n");
+                    break;
+            }
+        }
+        else if (strcmp(role, "ATMAdmin") == 0) {
+            switch (choice) {
+                case 1:
+                    displayDashboard();
+                    break;
+                case 2:
+                    manageCash();
+                    break;
+                case 3:
+                    atmMaintenance();
+                    break;
+                case 4:
+                    printf("\n=== Transaction Management (View Only) ===\n");
+                    printf("You can view transactions but cannot process refunds.\n");
+                    // Limited transaction management function could be added here
+                    printf("\nPress Enter to continue...");
+                    getchar();
+                    break;
+                case 5:
+                    manageSettings();
+                    break;
+                case 6:
+                    isLoggedIn = 0;
+                    writeAuditLog("ADMIN", "ATMAdmin logout");
+                    break;
+                default:
+                    printf("\nInvalid choice. Please try again.\n");
+                    break;
+            }
+        }
+        else if (strcmp(role, "UserAdmin") == 0) {
+            switch (choice) {
+                case 1:
+                    printf("\n=== Dashboard (Limited) ===\n");
+                    printf("Limited dashboard information available for User Admins.\n");
+                    // Limited dashboard function could be added here
+                    printf("\nPress Enter to continue...");
+                    getchar();
+                    break;
+                case 2:
+                    manageUsers();
+                    break;
+                case 3:
+                    printf("\n=== Transaction Management (Limited) ===\n");
+                    printf("You can view user transactions only.\n");
+                    // Limited transaction management function could be added here
+                    printf("\nPress Enter to continue...");
+                    getchar();
+                    break;
+                case 4:
+                    isLoggedIn = 0;
+                    writeAuditLog("ADMIN", "UserAdmin logout");
+                    break;
+                default:
+                    printf("\nInvalid choice. Please try again.\n");
+                    break;
+            }
+        }
+        else {
+            // Default options for unknown roles
+            switch (choice) {
+                case 1:
+                    printf("\n=== Dashboard (Limited) ===\n");
+                    printf("Limited access due to undefined role.\n");
+                    printf("\nPress Enter to continue...");
+                    getchar();
+                    break;
+                case 2:
+                    isLoggedIn = 0;
+                    writeAuditLog("ADMIN", "Admin logout");
+                    break;
+                default:
+                    printf("\nInvalid choice. Please try again.\n");
+                    break;
+            }
+        }
+        
+        if (isLoggedIn && choice != 11) {
+            printf("\nPress Enter to continue...");
+            getchar();
+        }
+    }
+    
+    // Free allocated resources for configs before exiting
+    freeConfigs();
+}
+
+// Admin authentication function
+int handleAdminAuthentication(int atmId) {
+    char adminId[50], adminPass[50];
+    int adminAttempts = 3; // Max admin login attempts
+    AdminInfo adminInfo;
+    bool authenticated = false;
+    
+    printf("\n===== Admin Authentication =====\n");
+    
+    while (adminAttempts > 0 && !authenticated) {
+        printf("Enter Admin ID: ");
+        scanf("%49s", adminId);
+        
+        printf("Enter Admin Password: ");
+        scanf("%49s", adminPass);
+        
+        // Clear input buffer
+        while (getchar() != '\n');
+        
+        // Open admin credentials file
+        FILE *file = fopen(ADMIN_CREDENTIALS_FILE, "r");
+        if (file == NULL) {
+            printf("Error: Unable to access admin credentials.\n");
+            writeErrorLog("Failed to open admin credentials file");
+            return 0;
+        }
+        
+        char line[256];
+        
+        // Skip header lines (first 3 lines)
+        for (int i = 0; i < 3; i++) {
+            if (fgets(line, sizeof(line), file) == NULL) {
+                printf("Error: Admin credentials file format is incorrect.\n");
+                fclose(file);
+                return 0;
+            }
+        }
+        
+        // Process admin records
+        while (fgets(line, sizeof(line), file) != NULL) {
+            // Skip separator lines
+            if (line[0] == '+') continue;
+            
+            // Parse admin information
+            sscanf(line, "| %s | %s | %s | %s | %s | %s |", 
+                adminInfo.adminId, adminInfo.username, adminInfo.passwordHash, 
+                adminInfo.role, adminInfo.lastLogin, adminInfo.status);
+            
+            // Check credentials
+            if (strcmp(adminInfo.adminId, adminId) == 0 && strcmp(adminInfo.username, adminPass) == 0) {
+                authenticated = true;
+                break;
+            }
+        }
+        
+        fclose(file);
+        
+        if (authenticated) {
+            printf("\nAdmin login successful! Welcome, %s (%s).\n", adminInfo.adminId, adminInfo.role);
+            
+            // Log successful login
+            char logMsg[100];
+            sprintf(logMsg, "Admin login successful: %s (%s)", adminInfo.adminId, adminInfo.role);
+            writeAuditLog("ADMIN", logMsg);
+            
+            // Process admin actions based on role
+            processByAdminRole(adminInfo.role);
+            return 1;
+        } else {
+            adminAttempts--;
+            printf("\nInvalid admin credentials. %d attempts remaining.\n", adminAttempts);
+            
+            // Log failed attempt
+            writeAuditLog("ADMIN", "Failed admin login attempt");
+            
+            if (adminAttempts <= 0) {
+                printf("Maximum login attempts reached. Please try again later.\n");
+                return 0;
+            }
+        }
+    }
+    
+    return 0;
+}
+
+// ATM Mode authentication function
+int handleAtmModeAuthentication(int atmId) {
+    char superAdminId[50], superAdminPass[50];
+    int attempts = 3; // Max super admin login attempts
+    AdminInfo adminInfo;
+    bool authenticated = false;
+    
+    printf("\n===== ATM Mode Authentication =====\n");
+    printf("ATM ID: %d requires Super Admin verification.\n", atmId);
+    
+    while (attempts > 0 && !authenticated) {
+        printf("Enter Super Admin ID: ");
+        scanf("%49s", superAdminId);
+        
+        printf("Enter Super Admin Password: ");
+        scanf("%49s", superAdminPass);
+        
+        // Clear input buffer
+        while (getchar() != '\n');
+        
+        // Open admin credentials file
+        FILE *file = fopen(ADMIN_CREDENTIALS_FILE, "r");
+        if (file == NULL) {
+            printf("Error: Unable to access admin credentials.\n");
+            writeErrorLog("Failed to open admin credentials file");
+            return 0;
+        }
+        
+        char line[256];
+        
+        // Skip header lines (first 3 lines)
+        for (int i = 0; i < 3; i++) {
+            if (fgets(line, sizeof(line), file) == NULL) {
+                printf("Error: Admin credentials file format is incorrect.\n");
+                fclose(file);
+                return 0;
+            }
+        }
+        
+        // Process admin records
+        while (fgets(line, sizeof(line), file) != NULL) {
+            // Skip separator lines
+            if (line[0] == '+') continue;
+            
+            // Parse admin information
+            sscanf(line, "| %s | %s | %s | %s | %s | %s |", 
+                adminInfo.adminId, adminInfo.username, adminInfo.passwordHash, 
+                adminInfo.role, adminInfo.lastLogin, adminInfo.status);
+            
+            // Check if admin is SuperAdmin and credentials match
+            if (strcmp(adminInfo.role, "SuperAdmin") == 0 && 
+                strcmp(adminInfo.adminId, superAdminId) == 0 && 
+                strcmp(adminInfo.username, superAdminPass) == 0) {
+                authenticated = true;
+                break;
+            }
+        }
+        
+        fclose(file);
+        
+        if (authenticated) {
+            printf("\nATM ID %d authenticated. You can now proceed with ATM operations.\n", atmId);
+            
+            // Log successful ATM authentication
+            char logMsg[100];
+            sprintf(logMsg, "ATM %d authenticated by Super Admin: %s", atmId, adminInfo.adminId);
+            writeAuditLog("ATM", logMsg);
+            
+            return 1;
+        } else {
+            attempts--;
+            printf("\nInvalid Super Admin credentials or not authorized. %d attempts remaining.\n", attempts);
+            
+            // Log failed attempt
+            writeAuditLog("ATM", "Failed ATM authentication attempt");
+            
+            if (attempts <= 0) {
+                printf("Maximum authentication attempts reached. Please try again later.\n");
+                return 0;
+            }
+        }
+    }
+    
+    return 0;
+}

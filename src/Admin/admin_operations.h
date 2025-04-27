@@ -9,11 +9,15 @@ void handleAdminLockout(int* attempts, time_t* lockoutStartTime, int lockoutDura
 
 // Core admin operations
 void createAccount();
-void toggleServiceMode();
+int toggleServiceMode(); // Changed return type from void to int to match admin_db.h
 void regenerateCardPin(int cardNumber);
 void toggleCardStatus(int cardNumber);
 
 // Service status functions
 int getServiceStatus();
+int setServiceStatus(int status);
+
+// ATM status management
+int updateAtmStatus(const char* atmId, const char* newStatus);
 
 #endif // ADMIN_OPERATIONS_H

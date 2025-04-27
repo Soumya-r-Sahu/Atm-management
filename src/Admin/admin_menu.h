@@ -12,6 +12,7 @@ void manageUsers();
 void atmMaintenance();
 void securityManagement();
 void manageSettings();
+void manageSystemConfigurations(); // Add this new function
 void manageNotifications();
 void viewAuditLogs();
 

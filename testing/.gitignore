@@ -1,0 +1,5 @@
+# Ignore all files in the testing folder
+*
+
+# Allow version control for this .gitignore file
+!.gitignore

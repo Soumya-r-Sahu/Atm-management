@@ -1,17 +1,10 @@
 #ifndef TRANSACTION_MANAGER_H
 #define TRANSACTION_MANAGER_H
 
-#define PHONE_NUMBER_LENGTH 10
+#include <stdbool.h>  // Added for bool type
+#include "transaction_types.h"  // Include shared TransactionType definition
 
-// Transaction type enumeration
-typedef enum {
-    TRANSACTION_BALANCE_CHECK,
-    TRANSACTION_DEPOSIT,
-    TRANSACTION_WITHDRAWAL,
-    TRANSACTION_PIN_CHANGE,
-    TRANSACTION_MINI_STATEMENT,
-    TRANSACTION_MONEY_TRANSFER
-} TransactionType;
+#define PHONE_NUMBER_LENGTH 10
 
 // Transaction result structure
 typedef struct {
@@ -27,9 +20,13 @@ TransactionResult performDeposit(int cardNumber, float amount, const char* usern
 TransactionResult performWithdrawal(int cardNumber, float amount, const char* username);
 TransactionResult getMiniStatement(int cardNumber, const char* username);
 TransactionResult performMoneyTransfer(int senderCardNumber, int receiverCardNumber, float amount, const char* username);
+TransactionResult performFundTransfer(int cardNumber, int targetCardNumber, float amount, const char* username);
 
 // Function to log transaction details
-void logTransaction(int cardNumber, TransactionType type, float amount, int success);
+void logTransaction(int cardNumber, TransactionType type, float amount, bool success);
+
+// Helper function to write transaction log entries (renamed to avoid conflict)
+void writeTransactionDetails(const char* username, const char* transactionType, const char* details);
 
 // Function to generate a transaction receipt
 void generateReceipt(int cardNumber, TransactionType type, float amount, float balance, const char* phoneNumber);

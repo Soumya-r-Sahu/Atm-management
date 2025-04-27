@@ -1,42 +1,51 @@
 # Compiler
 CC = gcc
 
-# Flags for the main program
-MAIN_CFLAGS = -Wall -Wextra -I./src -I./src/common -I./src/utils -I./src/validation -I./src/database -I./src/main -I./src/transaction
+# Project directories - use double quotes for Windows paths with spaces
+DATA_DIR = "data"
 
-# Flags for the admin program
-ADMIN_CFLAGS = -Wall -Wextra -g -I./src -I./src/Admin -I./src/common -I./src/utils -I./src/transaction
+# Common flags for all builds
+CFLAGS = -Wall -Wextra -g -I./src -I./src/common -I./src/utils -I./src/validation -I./src/database -I./src/main -I./src/transaction -I./src/Admin -DDATA_DIR='$(DATA_DIR)'
 
-# Source files for the main program
-MAIN_SRC = src/main/main.c src/main/menu.c src/validation/card_num_validation.c src/database/database.c src/validation/pin_validation.c src/utils/logger.c src/common/utils.c src/Admin/admin.c src/transaction/transaction_manager.c src/database/customer_profile.c
-# Explicitly list all object files for the main program
-MAIN_OBJ = src/main/main.o src/main/menu.o src/validation/card_num_validation.o src/database/database.o src/validation/pin_validation.o src/utils/logger.o src/common/utils.o src/Admin/admin.o src/transaction/transaction_manager.o src/database/customer_profile.o
-MAIN_EXEC = run
+# Source files for the single executable that includes all functionality
+SRCS = src/main/main.c \
+       src/validation/card_num_validation.c \
+       src/validation/pin_validation.c \
+       src/database/database.c \
+       src/utils/logger.c \
+       src/main/menu.c \
+       src/common/paths.c \
+       src/utils/language_support.c \
+       src/config/config_manager.c \
+       src/Admin/admin_interface.c \
+       src/Admin/admin_db.c \
+       src/Admin/admin_menu.c \
+       src/Admin/admin_operations.c \
+       src/transaction/transaction_manager.c \
+       src/database/customer_profile.c \
+       src/database/database_utils.c \
+       src/utils/file_utils.c \
+       src/utils/hash_utils.c \
+       src/utils/string_utils.c \
+       src/common/utils.c
 
-# Source files for the admin program
-ADMIN_SRC = src/Admin/admin.c src/Admin/admin_db.c src/Admin/admin_operations.c src/transaction/transaction_manager.c src/database/customer_profile.c
-ADMIN_OBJ = $(ADMIN_SRC:.c=.o)
-ADMIN_EXEC = src/Admin/admin
+# Object files
+OBJS = $(SRCS:.c=.o)
 
-# Default target: build both programs
-all: $(MAIN_EXEC) $(ADMIN_EXEC)
+# Final executable name
+EXEC = atm_system
 
-# Build the main program
-$(MAIN_EXEC): $(MAIN_OBJ)
-	$(CC) $(MAIN_CFLAGS) -o $@ $^
+# Default target: build the single executable
+all: $(EXEC)
 
-# Build the admin program
-$(ADMIN_EXEC): $(ADMIN_OBJ)
-	$(CC) $(ADMIN_CFLAGS) -o $@ $^
-
-# Compile source files for the main program
-%.o: %.c
-	$(CC) $(MAIN_CFLAGS) -c $< -o $@
+# Build the unified executable
+$(EXEC): $(OBJS)
+	$(CC) $(CFLAGS) -o $@ $^
 
 # Clean up
 clean:
-	-del /f /q $(MAIN_OBJ) $(MAIN_EXEC) $(ADMIN_OBJ) $(ADMIN_EXEC) 2>nul
-	-if exist $(MAIN_EXEC) del /f /q $(MAIN_EXEC)
-	-if exist $(ADMIN_EXEC) del /f /q $(ADMIN_EXEC)
+	rm -f $(OBJS) $(EXEC)
 
-.PHONY: all clean
+# Dependency rule
+%.o: %.c
+	$(CC) -c $(CFLAGS) -o $@ $<

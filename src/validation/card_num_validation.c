@@ -1,11 +1,10 @@
 #include "card_num_validation.h"
 #include "../utils/logger.h"
+#include "../common/paths.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
-
-#define CREDENTIALS_FILE "../data/credentials.txt"
 
 // Validate if a card number is in the correct format using Luhn algorithm
 bool isValidCardFormat(long long cardNumber) {
@@ -39,7 +38,7 @@ bool isValidCardFormat(long long cardNumber) {
 }
 
 // Check if a card exists in our system
-bool doesCardExist(int cardNumber) {
+bool cardExistsInSystem(int cardNumber) {
     FILE *file = fopen(CREDENTIALS_FILE, "r");
     if (file == NULL) {
         writeErrorLog("Failed to open credentials file for card existence check");
@@ -53,11 +52,11 @@ bool doesCardExist(int cardNumber) {
     
     int storedCardNumber;
     int storedPIN;
-    char storedUsername[50], storedStatus[10];
+    char storedUsername[50], phoneNumber[15], storedStatus[10];
     bool found = false;
     
-    while (fscanf(file, "%49[^|] | %d | %d | %9s", 
-                 storedUsername, &storedCardNumber, &storedPIN, storedStatus) == 4) {
+    while (fscanf(file, "%49[^|] | %14[^|] | %d | %d | %9s", 
+                 storedUsername, phoneNumber, &storedCardNumber, &storedPIN, storedStatus) == 5) {
         if (storedCardNumber == cardNumber) {
             found = true;
             break;
@@ -79,7 +78,7 @@ bool validateCardNumber(long long cardNumber) {
     }
     
     // Then check existence in our system
-    if (!doesCardExist((int)cardNumber)) {
+    if (!cardExistsInSystem((int)cardNumber)) {
         char logMsg[100];
         sprintf(logMsg, "Card number %lld not found in system", cardNumber);
         writeErrorLog(logMsg);

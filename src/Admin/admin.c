@@ -7,6 +7,7 @@
 #include "admin_db.h"
 #include "../utils/logger.h"
 #include "../database/database.h"
+#include "../config/config_manager.h" // New include for config manager
 
 // Constants
 #define ADMIN_LOCKOUT_DURATION 60 // seconds
@@ -54,6 +55,11 @@ int main() {
             printf("\nPress Enter to continue...");
             getchar();
         }
+    }
+
+    // Load system configurations
+    if (!initializeConfigs()) {
+        printf("Warning: Failed to load system configurations. Using defaults.\n");
     }
     
     // Admin menu loop
@@ -110,6 +116,10 @@ int main() {
                 writeAuditLog("ADMIN", "Admin logout");
                 printf("\nLogging out of admin panel...\n");
                 break;
+
+            case 11: // System Configuration
+                manageSystemConfigurations();
+                break;
                 
             default:
                 printf("\nInvalid choice. Please try again.\n");
@@ -121,6 +131,9 @@ int main() {
             getchar();
         }
     }
+
+    // Free allocated resources for configs before exiting
+    freeConfigs();
     
     return 0;
 }

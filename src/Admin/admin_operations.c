@@ -105,69 +105,6 @@ void createAccount() {
     }
 }
 
-// Toggle ATM service mode (Online/Offline)
-void toggleServiceMode() {
-    int currentStatus = getServiceStatus();
-    const char* currentStatusStr = currentStatus ? "Offline" : "Online";
-    
-    printf("\n===== Toggle Service Mode =====\n");
-    printf("Current Status: %s\n", currentStatusStr);
-    
-    int confirm;
-    printf("Do you want to change the status to %s? (1 for Yes, 0 for No): ", 
-          currentStatus ? "Online" : "Offline");
-    scanf("%d", &confirm);
-    
-    if (confirm) {
-        if (setServiceStatus(!currentStatus)) {
-            printf("\nService status successfully changed to %s.\n", 
-                  currentStatus ? "Online" : "Offline");
-            
-            // Log the activity
-            char logMsg[100];
-            sprintf(logMsg, "Changed ATM service status to %s", 
-                  currentStatus ? "Online" : "Offline");
-            writeAuditLog("ADMIN", logMsg);
-        } else {
-            printf("\nError: Failed to change service status.\n");
-            writeErrorLog("Failed to toggle service mode");
-        }
-    } else {
-        printf("\nOperation cancelled.\n");
-    }
-}
-
-// Get current ATM service status
-int getServiceStatus() {
-    // 0 = Online, 1 = Offline
-    FILE *file = fopen("../data/status.txt", "r");
-    
-    if (file == NULL) {
-        // Default to online if file doesn't exist
-        return 0;
-    }
-    
-    int status;
-    fscanf(file, "%d", &status);
-    fclose(file);
-    
-    return status;
-}
-
-// Set ATM service status
-int setServiceStatus(int status) {
-    FILE *file = fopen("../data/status.txt", "w");
-    
-    if (file == NULL) {
-        return 0; // Failed to open/create file
-    }
-    
-    fprintf(file, "%d", status);
-    fclose(file);
-    
-    return 1; // Success
-}
-
 // Regenerate PIN for a card
 void regenerateCardPin(int cardNumber) {
     if (!isCardNumberUnique(cardNumber)) { // If not unique, it exists
@@ -261,4 +198,97 @@ void toggleCardStatus(int cardNumber) {
         printf("\nError: Card number %d does not exist.\n", cardNumber);
         writeErrorLog("Attempted to toggle status for non-existent card");
     }
+}
+
+// Update ATM status (Online, Offline, Under Maintenance)
+int updateAtmStatus(const char* atmId, const char* newStatus) {
+    FILE* file = fopen("data/atm_data.txt", "r");
+    if (file == NULL) {
+        writeErrorLog("Failed to open ATM data file for reading");
+        return 0; // Failed to open file
+    }
+    
+    // Create a temporary file for writing the updated data
+    FILE* tempFile = fopen("data/temp/atm_data_temp.txt", "w");
+    if (tempFile == NULL) {
+        fclose(file);
+        writeErrorLog("Failed to create temporary file for ATM data update");
+        return 0; // Failed to create temporary file
+    }
+    
+    char line[256];
+    int lineCount = 0;
+    int found = 0;
+    
+    // Read and copy the file line by line
+    while (fgets(line, sizeof(line), file) != NULL) {
+        lineCount++;
+        
+        // Copy header lines and separator lines as they are
+        if (lineCount <= 3 || line[0] == '+') {
+            fprintf(tempFile, "%s", line);
+            continue;
+        }
+        
+        // Check if this is the line with the specified ATM ID
+        char atmIdFromLine[20];
+        if (sscanf(line, "| %s |", atmIdFromLine) == 1 && strcmp(atmIdFromLine, atmId) == 0) {
+            // Found the ATM to update
+            found = 1;
+            
+            // Extract all fields
+            char location[100];
+            char status[30];
+            double totalCash;
+            char lastRefilled[30];
+            int transactionCount;
+            
+            // Parse the current line
+            // Format: | ATM001 | Main Branch, Downtown   | Online           | 250000.00  | 2025-04-25 08:00:00 | 123              |
+            if (sscanf(line, "| %*s | %99[^|] | %29[^|] | %lf | %29[^|] | %d |",
+                      location, status, &totalCash, lastRefilled, &transactionCount) == 5) {
+                
+                // Write the updated line to the temp file
+                fprintf(tempFile, "| %s | %s | %s | %.2f | %s | %d |\n",
+                       atmId, location, newStatus, totalCash, lastRefilled, transactionCount);
+                
+                // Log the activity
+                char logMsg[200];
+                sprintf(logMsg, "Updated ATM %s status from '%s' to '%s'", 
+                        atmId, status, newStatus);
+                writeAuditLog("ADMIN", logMsg);
+            } else {
+                // If there was an error parsing the line, copy it as-is
+                fprintf(tempFile, "%s", line);
+                writeErrorLog("Failed to parse ATM data line during status update");
+            }
+        } else {
+            // Not the target ATM, copy line as-is
+            fprintf(tempFile, "%s", line);
+        }
+    }
+    
+    // Close both files
+    fclose(file);
+    fclose(tempFile);
+    
+    // Check if ATM was found
+    if (!found) {
+        remove("data/temp/atm_data_temp.txt"); // Clean up temp file
+        writeErrorLog("ATM ID not found during status update");
+        return 0; // ATM ID not found
+    }
+    
+    // Replace the original file with the updated file
+    if (remove("data/atm_data.txt") != 0) {
+        writeErrorLog("Failed to remove original ATM data file during update");
+        return 0; // Failed to remove original file
+    }
+    
+    if (rename("data/temp/atm_data_temp.txt", "data/atm_data.txt") != 0) {
+        writeErrorLog("Failed to rename temporary ATM data file during update");
+        return 0; // Failed to rename file
+    }
+    
+    return 1; // Success
 }

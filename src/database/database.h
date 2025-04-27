@@ -1,23 +1,38 @@
 #ifndef DATABASE_H
 #define DATABASE_H
 
-// Card and account operations
+#include <stdbool.h>
+#include <stddef.h>
+#include "../transaction/transaction_types.h"  // Include shared TransactionType definition
+
+// Card and account validation functions
+bool doesCardExist(int cardNumber);
+bool isCardActive(int cardNumber);
+bool validateCard(int cardNumber, int pin);
+bool validateCardWithHash(int cardNumber, const char* pinHash);
+
+// PIN management functions
+bool updatePIN(int cardNumber, int newPin);
+bool updatePINHash(int cardNumber, const char* pinHash);
+
+// Card holder information functions
+bool getCardHolderName(int cardNumber, char* name, size_t nameSize);
+bool getCardHolderPhone(int cardNumber, char* phone, size_t phoneSize);
+
+// Account balance functions
 float fetchBalance(int cardNumber);
-int updateBalance(int cardNumber, float newBalance);
+bool updateBalance(int cardNumber, float newBalance);
 
-// Card validation operations
-int validateCard(int cardNumber, int pin);
-int isCardActive(int cardNumber);
-int getCardHolderName(int cardNumber, char *name, int maxLen);
-
-// Withdrawal limit management
-float getDailyWithdrawals(int cardNumber);
+// Withdrawal tracking functions
 void logWithdrawal(int cardNumber, float amount);
-void resetDailyWithdrawals();
+void logWithdrawalForLimit(int cardNumber, float amount, const char* date);
+float getDailyWithdrawals(int cardNumber);
 
-// Account management operations
-int updatePIN(int cardNumber, int newPIN);
-int blockCard(int cardNumber);
-int unblockCard(int cardNumber);
+// Card status management functions
+bool blockCard(int cardNumber);
+bool unblockCard(int cardNumber);
+
+// Transaction logging function
+void logTransaction(int cardNumber, TransactionType type, float amount, bool success);
 
 #endif // DATABASE_H

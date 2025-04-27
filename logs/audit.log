@@ -1,53 +1,9 @@
-[2025-04-23 02:34:18] ADMIN: Failed admin login attempt
-[2025-04-23 02:36:01] ADMIN: Failed admin login attempt
-[2025-04-23 02:44:13] ADMIN: Failed admin login attempt
-[2025-04-23 02:44:59] ADMIN: Failed admin login attempt
-[2025-04-23 02:44:59] ADMIN: Admin account locked due to failed login attempts.
-[2025-04-23 03:00:39] ADMIN: Failed admin login attempt
-[2025-04-23 03:00:49] ADMIN: Failed admin login attempt
-[2025-04-23 03:08:24] ADMIN: Failed admin login attempt
-[2025-04-23 04:37:41] ADMIN: Admin logged in
-[2025-04-23 04:37:49] ADMIN: Card unblocked successfully
-[2025-04-23 04:37:49] ADMIN: Card unblock attempted
-[2025-04-23 04:40:48] ADMIN: Exited Admin Panel
-[2025-04-23 04:41:40] ADMIN: Admin logged in
-[2025-04-23 04:41:50] ADMIN: Card unblocked successfully
-[2025-04-23 04:41:57] ADMIN: Card unblock confirmed
-[2025-04-23 04:45:46] ADMIN: Exited Admin Panel
-[2025-04-23 04:46:15] ADMIN: Admin logged in
-[2025-04-23 04:46:33] ADMIN: Card unblocked successfully
-[2025-04-23 04:46:38] ADMIN: Card unblocked with new PIN generated
-[2025-04-23 04:48:45] ADMIN: Account created successfully
-[2025-04-23 04:48:45] ADMIN: Created a new account
-[2025-04-23 04:50:57] ADMIN: ATM service mode set to out of service
-[2025-04-23 04:51:27] ADMIN: Admin logged in
-[2025-04-23 04:51:30] ADMIN: ATM service mode set to out of service
-[2025-04-23 04:51:35] ADMIN: Service mode toggled
-[2025-04-23 04:52:38] ADMIN: Card unblocked successfully
-[2025-04-23 04:52:41] ADMIN: Card unblocked with new PIN generated
-[2025-04-23 04:55:28] ADMIN: Admin logged in
-[2025-04-23 04:58:40] ADMIN: Exited Admin Panel
-[2025-04-23 04:59:10] ADMIN: Admin logged in
-[2025-04-23 05:01:46] ADMIN: Admin logged in
-[2025-04-23 05:02:13] ADMIN: PIN reset successfully
-[2025-04-23 05:07:13] ADMIN: Admin logged in
-[2025-04-23 05:11:43] ADMIN: Admin logged in
-[2025-04-23 05:12:04] ADMIN: Account created successfully
-[2025-04-23 05:12:10] ADMIN: Created a new account
-[2025-04-23 05:12:40] ADMIN: Account created successfully
-[2025-04-23 05:12:43] ADMIN: Created a new account
-[2025-04-23 05:15:02] ADMIN: Admin logged in
-[2025-04-23 05:15:57] ADMIN: Admin logged in
-[2025-04-23 05:20:26] ADMIN: Admin logged in
-[2025-04-23 05:22:22] ADMIN: Admin logged in
-[2025-04-23 05:29:38] ADMIN: Admin logged in
-[2025-04-23 05:30:15] ADMIN: ATM service mode set to out of service
-[2025-04-23 05:30:32] ADMIN: Service mode toggled
-[2025-04-23 05:31:16] ADMIN: ATM service mode set to operational
-[2025-04-23 05:31:30] ADMIN: Service mode toggled
-[2025-04-23 05:31:33] ADMIN: ATM service mode set to out of service
-[2025-04-23 05:39:37] ADMIN: Admin logged in
-[2025-04-23 05:40:21] ADMIN: ATM service mode set to out of service
-[2025-04-23 05:41:00] ADMIN: Service mode toggled
-[2025-04-23 05:43:26] ADMIN: ATM service mode set to operational
-[2025-04-23 05:43:27] ADMIN: Service mode toggled
+Log ID  | User ID  | Action Type | Table Affected | Action Details                             | Timestamp
+---------|----------|------------|---------------|------------------------------------------|---------------------
+L50001   | C10001   | Login      | Account       | User logged in successfully              | 2025-04-26 09:30:15
+L50002   | C10001   | Query      | Account       | Balance check performed                  | 2025-04-26 09:31:22
+L50003   | C10002   | Login      | Account       | User logged in successfully              | 2025-04-26 14:45:10
+L50004   | C10002   | Update     | Account       | Withdrawal of 1000.00 processed          | 2025-04-26 14:47:35
+L50005   | admin123 | Login      | Admin         | Admin logged in successfully             | 2025-04-27 08:15:45
+L50006   | admin123 | Query      | System        | System configuration viewed              | 2025-04-27 08:16:30
+L50007   | admin123 | Update     | System        | Daily withdrawal limit updated           | 2025-04-27 08:20:15

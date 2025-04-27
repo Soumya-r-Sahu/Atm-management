@@ -5,13 +5,27 @@
 #include <string.h>
 #include <time.h>
 
+// Use DATA_DIR if defined, otherwise fallback to relative paths
+#ifdef DATA_DIR
+    #define PATH_PREFIX DATA_DIR
+#else
+    #define PATH_PREFIX "../data"
+#endif
+
+// File paths with proper concatenation
+#define ADMIN_CRED_FILE PATH_PREFIX "/admin_credentials.txt"
+#define CREDENTIALS_FILE PATH_PREFIX "/credentials.txt"
+#define ACCOUNTING_FILE PATH_PREFIX "/accounting.txt"
+#define TEMP_CREDENTIALS_FILE PATH_PREFIX "/temp_credentials.txt"
+#define STATUS_FILE PATH_PREFIX "/status.txt"
+
 // ============================
 // Admin Credentials Operations
 // ============================
 
 // Load admin credentials from admin_credentials.txt file
 int loadAdminCredentials(char *adminId, char *adminPass) {
-    FILE *file = fopen("../data/admin_credentials.txt", "r");
+    FILE *file = fopen(ADMIN_CRED_FILE, "r");
     if (file == NULL) {
         writeErrorLog("Failed to open admin_credentials.txt while loading admin credentials");
         return 0;
@@ -29,7 +43,7 @@ int loadAdminCredentials(char *adminId, char *adminPass) {
 
 // Update admin credentials in admin_credentials.txt file
 int updateAdminCredentials(const char *newAdminId, const char *newAdminPass) {
-    FILE *file = fopen("../data/admin_credentials.txt", "w");
+    FILE *file = fopen(ADMIN_CRED_FILE, "w");
     if (file == NULL) {
         writeErrorLog("Failed to open admin_credentials.txt for updating credentials");
         return 0;
@@ -52,7 +66,7 @@ int updateAdminCredentials(const char *newAdminId, const char *newAdminPass) {
 // Create a new ATM account with the given details
 int createNewAccount(const char *accountHolderName, int cardNumber, int pin) {
     // Update credentials.txt
-    FILE *credFile = fopen("../data/credentials.txt", "a");
+    FILE *credFile = fopen(CREDENTIALS_FILE, "a");
     if (credFile == NULL) {
         writeErrorLog("Failed to open credentials.txt while creating new account");
         return 0;
@@ -63,7 +77,7 @@ int createNewAccount(const char *accountHolderName, int cardNumber, int pin) {
     fclose(credFile);
 
     // Update accounting.txt with initial balance of 0
-    FILE *acctFile = fopen("../data/accounting.txt", "a");
+    FILE *acctFile = fopen(ACCOUNTING_FILE, "a");
     if (acctFile == NULL) {
         writeErrorLog("Failed to open accounting.txt while creating new account");
         return 0;
@@ -101,7 +115,7 @@ int generateRandomPin() {
 
 // Check if a card number is unique
 int isCardNumberUnique(int cardNumber) {
-    FILE *file = fopen("../data/credentials.txt", "r");
+    FILE *file = fopen(CREDENTIALS_FILE, "r");
     if (file == NULL) {
         writeErrorLog("Failed to open credentials.txt while checking card number uniqueness");
         return 0; // File not found, assume not unique to be safe
@@ -130,13 +144,13 @@ int isCardNumberUnique(int cardNumber) {
 
 // Update card details (PIN and/or status)
 int updateCardDetails(int cardNumber, int newPIN, const char *newStatus) {
-    FILE *file = fopen("../data/credentials.txt", "r");
+    FILE *file = fopen(CREDENTIALS_FILE, "r");
     if (file == NULL) {
         writeErrorLog("Failed to open credentials.txt while updating card details");
         return 0;
     }
 
-    FILE *tempFile = fopen("../data/temp_credentials.txt", "w");
+    FILE *tempFile = fopen(TEMP_CREDENTIALS_FILE, "w");
     if (tempFile == NULL) {
         fclose(file);
         writeErrorLog("Failed to create temporary file while updating card details");
@@ -190,13 +204,13 @@ int updateCardDetails(int cardNumber, int newPIN, const char *newStatus) {
 
     // Replace original file with updated file
     if (!found) {
-        remove("../data/temp_credentials.txt");
+        remove(TEMP_CREDENTIALS_FILE);
         writeErrorLog("Card not found while updating card details");
         return 0;
     }
 
-    if (remove("../data/credentials.txt") != 0 || 
-        rename("../data/temp_credentials.txt", "../data/credentials.txt") != 0) {
+    if (remove(CREDENTIALS_FILE) != 0 || 
+        rename(TEMP_CREDENTIALS_FILE, CREDENTIALS_FILE) != 0) {
         writeErrorLog("Failed to replace credentials.txt with updated file");
         return 0;
     }
@@ -216,7 +230,7 @@ int toggleServiceMode() {
 
 // Get current service status (0 = Online, 1 = Offline)
 int getServiceStatus() {
-    FILE *file = fopen("../data/status.txt", "r");
+    FILE *file = fopen(STATUS_FILE, "r");
     if (file == NULL) {
         writeErrorLog("Failed to open status.txt while getting service status");
         return 0; // Default to Online if file can't be read
@@ -239,7 +253,7 @@ int getServiceStatus() {
 
 // Set service status (0 = Online, 1 = Offline)
 int setServiceStatus(int isOutOfService) {
-    FILE *file = fopen("../data/status.txt", "w");
+    FILE *file = fopen(STATUS_FILE, "w");
     if (file == NULL) {
         writeErrorLog("Failed to open status.txt while setting service status");
         return 0;

@@ -2,6 +2,7 @@
 #include "admin_operations.h"
 #include "admin_db.h"
 #include "../utils/logger.h"
+#include "../config/config_manager.h"  // Added missing include for config-related functions
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -23,7 +24,8 @@ void displayAdminMenu() {
     printf("7. Settings\n");
     printf("8. Notifications and Alerts\n");
     printf("9. Audit Logs\n");
-    printf("10. Exit\n");
+    printf("10. Atm Configurations\n");  // New option
+    printf("11. Exit\n");                   // Changed from 10 to 11
     printf("=========================\n");
     printf("Enter your choice: ");
 }
@@ -32,24 +34,130 @@ void displayAdminMenu() {
 void displayDashboard() {
     printf("\n===== 📊 Dashboard =====\n");
     
-    // Get ATM status
-    int status = getServiceStatus();
-    const char* statusStr = status ? "Offline" : "Online";
-    printf("ATM Status: %s\n", statusStr);
+    // Get ATM status from the file
+    FILE *atmFile = fopen("data/atm_data.txt", "r");
+    if (!atmFile) {
+        printf("Error: Could not open ATM data file!\n");
+        return;
+    }
+
+    // Variables for ATM data
+    char line[256];
+    char atm_id[20], location[50], status[30];
+    double total_cash = 0.0;
+    int atm_count = 0, online_count = 0;
+    int total_transactions = 0;
+    char last_refilled[30];
+    int transaction_count;
+
+    // Skip header lines (3 lines including separator lines)
+    for (int i = 0; i < 3; i++) {
+        if (fgets(line, sizeof(line), atmFile) == NULL) {
+            printf("Error: Invalid ATM data file format!\n");
+            fclose(atmFile);
+            return;
+        }
+    }
+
+    // Process each ATM entry
+    while (fgets(line, sizeof(line), atmFile)) {
+        // Skip separator lines
+        if (line[0] == '+') continue;
+        
+        // Parse ATM data
+        if (sscanf(line, "| %s | %*[^|] | %s | %lf | %*[^|] | %d |", 
+                  atm_id, status, &total_cash, &transaction_count) >= 3) {
+            atm_count++;
+            total_transactions += transaction_count;
+            
+            if (strcmp(status, "Online") == 0) {
+                online_count++;
+            }
+        }
+    }
     
-    // Calculate total cash available (placeholder)
-    printf("Total Cash Available: ₹50,000\n");
+    fclose(atmFile);
     
-    // Count transactions today (placeholder)
-    printf("Number of Transactions Today: 42\n");
+    // Count today's transactions
+    FILE *transactionFile = fopen("data/atm_transactions.txt", "r");
+    if (!transactionFile) {
+        printf("Error: Could not open transaction data file!\n");
+    } else {
+        // Variables for transaction counting
+        char trans_date[30];
+        char today_date[11] = "2025-04-27"; // Current date
+        int today_transactions = 0;
+        
+        // Skip header lines (3 lines including separator lines)
+        for (int i = 0; i < 3; i++) {
+            if (fgets(line, sizeof(line), transactionFile) == NULL) break;
+        }
+        
+        // Count transactions for today
+        while (fgets(line, sizeof(line), transactionFile)) {
+            // Skip separator lines
+            if (line[0] == '+') continue;
+            
+            // Try to extract the date part from transaction_time
+            if (sscanf(line, "| %*[^|] | %*[^|] | %*[^|] | %*[^|] | %*[^|] | %10s", trans_date) == 1) {
+                if (strncmp(trans_date, today_date, 10) == 0) {
+                    today_transactions++;
+                }
+            }
+        }
+        
+        fclose(transactionFile);
+        
+        // Display dashboard information
+        printf("ATM Status: %d of %d ATMs Online\n", online_count, atm_count);
+        printf("Total Cash Available: ₹%.2f\n", total_cash);
+        printf("Number of Transactions Today: %d\n", today_transactions);
+        printf("Total Transaction Count: %d\n", total_transactions);
+    }
     
-    // Display average transaction time (placeholder)
-    printf("Average Transaction Time: 45 seconds\n");
-    
-    // Display alerts
+    // Display alerts from security_logs.txt
     printf("\n--- Alerts ---\n");
-    printf("- Low ₹500 notes (Refill recommended)\n");
-    printf("- Multiple card read errors detected\n");
+    FILE *securityFile = fopen("data/security_logs.txt", "r");
+    if (!securityFile) {
+        printf("- No security alerts available\n");
+    } else {
+        char log_id[20], user_id[20], event_type[50], event_details[100], status[20];
+        int alert_count = 0;
+        
+        // Skip header lines
+        for (int i = 0; i < 3; i++) {
+            if (fgets(line, sizeof(line), securityFile) == NULL) break;
+        }
+        
+        // Display unresolved security alerts
+        while (fgets(line, sizeof(line), securityFile) && alert_count < 3) {
+            // Skip separator lines
+            if (line[0] == '+') continue;
+            
+            // Extract status field
+            if (strstr(line, "Unresolved")) {
+                char *event_start = strstr(line, "|");
+                if (event_start) {
+                    event_start = strstr(event_start + 1, "|");
+                    if (event_start) {
+                        event_start = strstr(event_start + 1, "|");
+                        if (event_start) {
+                            char event_text[100] = {0};
+                            sscanf(event_start + 1, " %[^|]", event_text);
+                            printf("- %s\n", event_text);
+                            alert_count++;
+                        }
+                    }
+                }
+            }
+        }
+        
+        if (alert_count == 0) {
+            printf("- No unresolved security alerts\n");
+        }
+        
+        fclose(securityFile);
+    }
     
     writeAuditLog("ADMIN", "Viewed dashboard");
 }
@@ -273,9 +381,10 @@ void atmMaintenance() {
         printf("\n===== 🛠️ ATM Maintenance =====\n");
         printf("1. ATM Health Monitoring\n");
         printf("2. Hardware Status\n");
-        printf("3. Schedule Maintenance\n");
-        printf("4. Error Logs\n");
-        printf("5. Return to Main Menu\n");
+        printf("3. Update ATM Status\n");  // New option
+        printf("4. Schedule Maintenance\n"); // Moved down
+        printf("5. Error Logs\n");          // Moved down
+        printf("6. Return to Main Menu\n"); // Moved down
         printf("Enter your choice: ");
         
         if (scanf("%d", &choice) != 1) {
@@ -305,7 +414,92 @@ void atmMaintenance() {
                 writeAuditLog("ADMIN", "Checked hardware status");
                 break;
                 
-            case 3:
+            case 3: {
+                // Update ATM Status option
+                printf("\n--- Update ATM Status ---\n");
+                
+                // Display current ATM status
+                FILE *atmFile = fopen("data/atm_data.txt", "r");
+                if (!atmFile) {
+                    printf("Error: Could not open ATM data file!\n");
+                    break;
+                }
+                
+                printf("\nCurrent ATM Status:\n");
+                char line[256];
+                int lineCount = 0;
+                
+                // Skip the first lines (header)
+                for (int i = 0; i < 3; i++) {
+                    if (fgets(line, sizeof(line), atmFile) == NULL) break;
+                    lineCount++;
+                }
+                
+                // Display current status of all ATMs
+                printf("%-10s %-30s %-20s\n", "ATM ID", "Location", "Status");
+                printf("-----------------------------------------------------------\n");
+                
+                char atmId[20], location[50], status[30];
+                double totalCash;
+                char lastRefilled[30];
+                int transactionCount;
+                
+                while (fgets(line, sizeof(line), atmFile)) {
+                    lineCount++;
+                    
+                    // Skip separator lines
+                    if (line[0] == '+') continue;
+                    
+                    // Parse ATM data
+                    if (sscanf(line, "| %s | %49[^|] | %29[^|] | %lf | %29[^|] | %d |", 
+                              atmId, location, status, &totalCash, lastRefilled, &transactionCount) >= 3) {
+                        printf("%-10s %-30s %-20s\n", atmId, location, status);
+                    }
+                }
+                fclose(atmFile);
+                
+                // Get user input for which ATM to update
+                char targetAtmId[20];
+                printf("\nEnter ATM ID to update: ");
+                scanf("%s", targetAtmId);
+                
+                // Get the new status
+                int statusChoice;
+                printf("Select new status:\n");
+                printf("1. Online\n");
+                printf("2. Offline\n");
+                printf("3. Under Maintenance\n");
+                printf("Enter choice (1-3): ");
+                scanf("%d", &statusChoice);
+                
+                const char* newStatus;
+                switch (statusChoice) {
+                    case 1:
+                        newStatus = "Online";
+                        break;
+                    case 2:
+                        newStatus = "Offline";
+                        break;
+                    case 3:
+                        newStatus = "Under Maintenance";
+                        break;
+                    default:
+                        printf("Invalid status choice.\n");
+                        break;
+                }
+                
+                if (statusChoice >= 1 && statusChoice <= 3) {
+                    if (updateAtmStatus(targetAtmId, newStatus)) {
+                        printf("\nATM %s status successfully updated to %s.\n", targetAtmId, newStatus);
+                    } else {
+                        printf("\nError: Failed to update ATM status. Please check if the ATM ID is valid.\n");
+                    }
+                }
+                
+                break;
+            }
+            
+            case 4: // Was case 3 before
                 printf("\n--- Schedule Maintenance ---\n");
                 printf("Next scheduled maintenance: 30-Apr-2025\n");
                 printf("Maintenance tasks:\n");
@@ -315,7 +509,7 @@ void atmMaintenance() {
                 writeAuditLog("ADMIN", "Viewed scheduled maintenance");
                 break;
                 
-            case 4:
+            case 5: // Was case 4 before
                 printf("\n--- Error Logs ---\n");
                 printf("27-Apr-2025 09:15 - Card read error (Card: **** 1234)\n");
                 printf("27-Apr-2025 10:30 - Cash dispenser jam (Resolved)\n");
@@ -323,7 +517,7 @@ void atmMaintenance() {
                 writeAuditLog("ADMIN", "Viewed error logs");
                 break;
                 
-            case 5:
+            case 6: // Was case 5 before
                 printf("Returning to main menu...\n");
                 break;
                 
@@ -331,13 +525,13 @@ void atmMaintenance() {
                 printf("Invalid choice. Please try again.\n");
         }
         
-        if (choice != 5) {
+        if (choice != 6) { // Was 5 before
             printf("\nPress Enter to continue...");
             while (getchar() != '\n'); // Clear buffer
             getchar(); // Wait for Enter
         }
         
-    } while (choice != 5);
+    } while (choice != 6); // Was 5 before
 }
 
 // Security management options
@@ -492,6 +686,88 @@ void manageSettings() {
         }
         
     } while (choice != 5);
+}
+
+// System Configuration Management
+void manageSystemConfigurations() {
+    int choice;
+    
+    do {
+        printf("\n===== ⚙️ System Configurations =====\n");
+        printf("Current configurations:\n\n");
+        
+        // Display all configurations
+        for (int i = 0; i < g_configCount; i++) {
+            printf("%-2d. %-27s | %-15s\n", 
+                   i+1, 
+                   g_systemConfigs[i].name, 
+                   g_systemConfigs[i].value);
+        }
+        
+        printf("\nOptions:\n");
+        printf("1. Modify a configuration\n");
+        printf("2. Return to Main Menu\n");
+        printf("Enter your choice: ");
+        
+        if (scanf("%d", &choice) != 1) {
+            while (getchar() != '\n'); // Clear input buffer
+            printf("Invalid input. Please enter a number.\n");
+            continue;
+        }
+        
+        switch(choice) {
+            case 1: {
+                int configIndex;
+                char newValue[30];
+                
+                printf("\n--- Modify Configuration ---\n");
+                printf("Enter configuration number (1-%d): ", g_configCount);
+                
+                if (scanf("%d", &configIndex) != 1 || configIndex < 1 || configIndex > g_configCount) {
+                    while (getchar() != '\n'); // Clear input buffer
+                    printf("Invalid configuration number.\n");
+                    break;
+                }
+                
+                configIndex--; // Convert to 0-based index
+                
+                printf("Current value for %s: %s\n", 
+                       g_systemConfigs[configIndex].name,
+                       g_systemConfigs[configIndex].value);
+                       
+
+                printf("Enter new value: ");
+                while (getchar() != '\n'); // Clear input buffer
+                scanf("%29s", newValue);
+                
+                if (updateConfig(g_systemConfigs[configIndex].name, newValue)) {
+                    printf("Configuration updated successfully.\n");
+                    saveConfigs();
+                    
+                    char logMsg[100];
+                    sprintf(logMsg, "Updated configuration %s to %s", 
+                            g_systemConfigs[configIndex].name, newValue);
+                    writeAuditLog("ADMIN", logMsg);
+                } else {
+                    printf("Failed to update configuration.\n");
+                }
+                break;
+            }
+            case 2:
+                printf("Returning to main menu...\n");
+                break;
+                
+            default:
+                printf("Invalid choice. Please try again.\n");
+        }
+        
+        if (choice != 2) {
+            printf("\nPress Enter to continue...");
+            while (getchar() != '\n'); // Clear buffer
+            getchar(); // Wait for Enter
+        }
+        
+    } while (choice != 2);
 }
 
 // Notifications and alerts management

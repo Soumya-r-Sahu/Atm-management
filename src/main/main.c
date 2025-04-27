@@ -1,290 +1,202 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <time.h>
-#include <unistd.h> // For sleep function on Unix-like systems
-#include "../database/database.h"
-#include "../validation/pin_validation.h"
+#include <stdbool.h>
 #include "../validation/card_num_validation.h"
+#include "../validation/pin_validation.h"
+#include "../database/database.h"
 #include "../utils/logger.h"
+#include "../config/config_manager.h"
+#include "../common/paths.h"
 #include "../utils/language_support.h"
-#include "../transaction/transaction_manager.h"
-#include "menu.h" // Added menu.h header
+#include "menu.h"
+#include "../Admin/admin_operations.h"  // Include admin operations
+#include "../Admin/admin_db.h"          // Include admin database operations
+#include "../Admin/admin_interface.h"   // Include admin interface for role-based access
 
-// ============================
-// Function Prototypes
-// ============================
-void handleUserChoice(int choice, int cardNumber, const char* username);
-void clearScreen(); // Function to clear the terminal screen
-void logActivity(const char *activity); // Log user activities
-void checkATMAvailability(); // Function to check ATM availability
-void toggleToOutOfServiceInRealTime(); // Function to toggle ATM to Out of Service mode
-void logAdminActivity(const char *activity); // Function prototype for logging admin activity
-void displayLanguageSelection(); // Function to display language selection menu
-void printLocalizedMessage(const char* key); // Function to print localized text
+// Command-line argument for test mode
+#define TEST_MODE_ARG "--test"
 
-// Additional function prototypes for functions called in menu.c but not defined there
-void handleBalanceEnquiry(int cardNumber);
-void handleCashWithdrawal(int cardNumber);
-void handleCashDeposit(int cardNumber);
-void handleChangePin(int cardNumber);
-void handleMiniStatement(int cardNumber);
-void handleLanguageChange();
-void handleTransactionHistory(int cardNumber);
-void handleAccountDetails(int cardNumber);
-void updateCardStatus(int cardNumber, const char* status);
-void logTransaction(int cardNumber, int transactionType, float amount, int success);
-TransactionResult performWithdrawal(int cardNumber, float amount, const char* username);
-TransactionResult performFundTransfer(int cardNumber, int targetCardNumber, float amount, const char* username);
-const char* getCustomerPhoneNumber(int cardNumber);
-void generateReceipt(int cardNumber, int transactionType, float amount, float newBalance, const char* phoneNumber);
+// Forward declarations of functions used in this file
+extern void displayMainMenu(int cardNumber);
+int handleCardAuthentication();
+void displayWelcomeBanner();
 
-// ============================
-// Function to Check ATM Availability
-// ============================
-void checkATMAvailability() {
-    int status = fetchServiceStatus();
-    if (status == 1) {
-        printf("\n********************************************\n");
-        printf("*                                          *\n");
-        printf("*              OUT OF SERVICE              *\n");
-        printf("*                                          *\n");
-        printf("*         We apologize for the             *\n");
-        printf("*         inconvenience caused.            *\n");
-        printf("*                                          *\n");
-        printf("*     Please try again later or visit      *\n");
-        printf("*     nearest branch for assistance.       *\n");
-        printf("*                                          *\n");
-        printf("********************************************\n\n");
-        sleep(5); // Display the message for 5 seconds
-        exit(0);  // Exit the program
-    }
-}
-
-// ============================
-// Function to Display Language Selection
-// ============================
-void displayLanguageSelection() {
-    clearScreen();
-    printf("\n===== Language Selection / भाषा चयन / ଭାଷା ଚୟନ =====\n\n");
-    printf("1. English\n");
-    printf("2. Hindi (हिंदी)\n");
-    printf("3. Odia (ଓଡ଼ିଆ)\n");
-    printf("\nPlease select your preferred language (1-3): ");
+// Main function
+int main(int argc, char *argv[]) {
+    bool testMode = false;
     
-    int choice;
-    char inputBuffer[10];
-    
-    if (fgets(inputBuffer, sizeof(inputBuffer), stdin) != NULL) {
-        if (sscanf(inputBuffer, "%d", &choice) == 1) {
-            switch(choice) {
-                case 1: setLanguage(LANG_ENGLISH); break;
-                case 2: setLanguage(LANG_HINDI); break;
-                case 3: setLanguage(LANG_ODIA); break;
-                default: 
-                    printf("Invalid choice. Defaulting to English.\n");
-                    setLanguage(LANG_ENGLISH);
-            }
-        } else {
-            printf("Invalid input. Defaulting to English.\n");
-            setLanguage(LANG_ENGLISH);
+    // Check for test mode flag
+    for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], TEST_MODE_ARG) == 0) {
+            testMode = true;
+            printf("Running in TEST MODE - Using test data files\n");
         }
     }
     
-    // Print welcome message in selected language
-    clearScreen();
-    printf("\n");
-    printLocalizedMessage("WELCOME");
-    printf("\n\n");
-    sleep(2); // Show welcome message for 2 seconds
-}
-
-// Print localized message
-void printLocalizedMessage(const char* key) {
-    printf("%s", getLocalizedText(key));
-}
-
-// ============================
-// Main Function
-// ============================
-int main() {
-    int choice = 0;
-    float balance;
-    int cardNumber;
-    int pin;
-    char username[50];
-    int enteredPin;
-    char accountStatus[10]; // To store the account status
-    char inputBuffer[100]; // Buffer for user input
-
+    // Initialize data files and directories
+    if (!initializeDataFiles()) {
+        printf("Error: Failed to initialize required files and directories.\n");
+        return 1;
+    }
+    
     // Initialize language support
     if (!initLanguageSupport()) {
-        printf("Warning: Language support initialization failed. Defaulting to English.\n");
-        // Continue with default language
+        printf("Warning: Language support could not be fully initialized.\n");
     }
     
-    // Display language selection menu
-    displayLanguageSelection();
+    // Set default language
+    setLanguage(LANG_ENGLISH);
 
-    checkATMAvailability(); // Check ATM availability before proceeding
-
+    if (!initializeConfigs()) {
+        printf("Warning: Failed to load system configurations. Using defaults.\n");
+    }
+    
+    // Main application loop
     while (1) {
-        clearScreen(); // Clear the terminal before entering card number
-        printLocalizedMessage("ENTER_CARD");
-        printf(": ");
+        displayWelcomeBanner();
         
-        if (fgets(inputBuffer, sizeof(inputBuffer), stdin) == NULL || sscanf(inputBuffer, "%d", &cardNumber) != 1) {
-            printLocalizedMessage("INVALID_CARD");
-            printf("\n");
-            continue;
-        }
-
-        // Clear the input buffer to avoid issues with subsequent inputs
-        fflush(stdin);
-
-        if (!isCardNumberValid(cardNumber)) {
-            printLocalizedMessage("INVALID_CARD");
-            printf("\n");
-            logActivity("Invalid card number entered.");
-            continue;
-        }
-
-        if (!loadCredentials(cardNumber, &pin, username, accountStatus)) {
-            printLocalizedMessage("INVALID_CARD");
-            printf("\n");
-            logActivity("Card not found.");
-            continue;
-        }
-
-        // Fetch account status separately
-        FILE *file = fopen("../data/credentials.txt", "r");
-        if (file == NULL) {
-            printf("Error: Unable to fetch account status. Error Code: 601\n");
-            logError("Failed to open credentials.txt while fetching account status.");
-            continue;
-        }
-
-        char line[256];
-        int storedCardNumber;
-        char storedStatus[10];
-
-        // Skip header lines
-        fgets(line, sizeof(line), file);
-        fgets(line, sizeof(line), file);
-
-        // Search for the card number
-        while (fscanf(file, "%*[^|] | %d | %*d | %9s", &storedCardNumber, storedStatus) == 2) {
-            if (storedCardNumber == cardNumber) {
-                strcpy(accountStatus, storedStatus);
+        // Display language options
+        printf("Choose language / भाषा चुनें / ଭାଷା ବାଛନ୍ତୁ:\n");
+        printf("1. English\n");
+        printf("2. हिन्दी (Hindi)\n");
+        printf("3. ଓଡ଼ିଆ (Odia)\n");
+        
+        int langChoice;
+        printf("Enter choice: ");
+        scanf("%d", &langChoice);
+        
+        // Set language based on user choice
+        switch (langChoice) {
+            case 1:
+                setLanguage(LANG_ENGLISH);
                 break;
-            }
-        }
-
-        fclose(file);
-
-        // Check if the card is locked in the database
-        if (strcmp(accountStatus, "Locked") == 0) {
-            printf("Your card has been blocked. Please contact the bank administrator.\n");
-            logActivity("Blocked card access attempt.");
-            sleep(3); // Pause to show the message
-            continue;
-        }
-
-        // Check if the card is temporarily locked due to failed PIN attempts
-        int remainingLockoutTime;
-        if (isCardLockedOut(cardNumber, &remainingLockoutTime)) {
-            printf("Your card is temporarily locked due to too many failed attempts.\n");
-            printf("Please try again after %d seconds.\n", remainingLockoutTime);
-            logActivity("Temporarily locked card access attempt.");
-            sleep(3); // Pause to show the message
-            continue;
-        }
-
-        balance = fetchBalance(cardNumber);
-        if (balance < 0) {
-            printf("Error: Unable to fetch balance. Error Code: 602\n");
-            logError("Failed to fetch balance for the card.");
-            logActivity("Failed to fetch balance.");
-            continue;
-        }
-
-        printf("Hello, %s! ", username);
-        printLocalizedMessage("ENTER_PIN");
-        printf("\n");
-
-        // Get remaining PIN attempts
-        int remainingAttempts = getRemainingPINAttempts(cardNumber);
-
-        // PIN validation loop
-        bool authenticated = false;
-        while (remainingAttempts > 0) {
-            printf("Enter your PIN (%d attempts remaining): ", remainingAttempts);
-            if (fgets(inputBuffer, sizeof(inputBuffer), stdin) == NULL || sscanf(inputBuffer, "%d", &enteredPin) != 1) {
-                printf("Invalid input. Please enter a valid PIN.\n");
-                continue;
-            }
-
-            if (validatePIN(enteredPin, pin)) {
-                printf("Welcome, %s!\n", username);
-                logActivity("Successful login.");
-                authenticated = true;
-                
-                // Reset PIN attempts after successful login
-                resetPINAttempts(cardNumber);
+            case 2:
+                setLanguage(LANG_HINDI);
                 break;
-            } else {
-                remainingAttempts--;
-                printLocalizedMessage("INVALID_PIN");
-                printf(" ");
-                printf("You have %d attempt(s) remaining.\n", remainingAttempts);
-                logActivity("Failed PIN attempt.");
-                
-                // Record the failed attempt
-                recordFailedPINAttempt(cardNumber);
-                
-                // Check if this attempt has triggered a lockout
-                if (isCardLockedOut(cardNumber, &remainingLockoutTime)) {
-                    printf("You have entered the wrong PIN too many times.\n");
-                    printf("Your card is temporarily locked for %d seconds.\n", remainingLockoutTime);
-                    logActivity("Card temporarily locked due to failed PIN attempts.");
-                    break;
-                }
-            }
+            case 3:
+                setLanguage(LANG_ODIA);
+                break;
+            default:
+                setLanguage(LANG_ENGLISH);
+                break;
         }
-
-        if (authenticated) {
-            int exitMenu = 0; // Flag to exit the menu loop
-            while (!exitMenu) {
-                clearScreen(); // Clear the terminal before displaying the menu
-                displayMenu();
-                printf("Enter your choice: ");
-                if (fgets(inputBuffer, sizeof(inputBuffer), stdin) == NULL || sscanf(inputBuffer, "%d", &choice) != 1) {
-                    printf("Invalid input. Please enter a valid choice.\n");
-                    continue;
-                }
-
-                if (choice == 7) { // Exit option
-                    printLocalizedMessage("THANK_YOU");
-                    printf("\n");
-                    logActivity("Exited ATM.");
-                    exitMenu = 1; // Exit the menu loop
-                } else {
-                    handleUserChoice(choice, cardNumber, username);
+        
+        // Mode selection menu
+        int choice;
+        
+        printf("\n===== Mode Selection =====\n");
+        printf("1. Admin Mode\n");
+        printf("2. ATM Mode\n");
+        printf("Enter your choice (1-2): ");
+        scanf("%d", &choice);
+        
+        if (choice == 1) {
+            // Admin mode - Ask for admin credentials
+            if (handleAdminAuthentication(0)) {
+                // Admin authenticated, redirecting to admin menu is handled in handleAdminAuthentication
+                printf("\nReturning to main menu...\n");
+            }
+        } else if (choice == 2) {
+            // ATM mode - Ask for ATM ID first
+            int atmId;
+            printf("\n===== ATM Mode =====\n");
+            printf("Enter ATM ID: ");
+            scanf("%d", &atmId);
+            
+            if (handleAtmModeAuthentication(atmId)) {
+                // ATM authenticated, now handle regular customer card
+                int cardNumber = handleCardAuthentication();
+                
+                if (cardNumber > 0) {
+                    // Regular user authenticated, show main menu
+                    displayMainMenu(cardNumber);
                 }
             }
+        } else {
+            printf("\nInvalid selection. Returning to main menu.\n");
+        }
+        
+        // Ask if user wants to continue with another transaction
+        char continueChoice;
+        printf("\nDo you want to continue? (y/n): ");
+        scanf(" %c", &continueChoice);
+        
+        if (continueChoice != 'y' && continueChoice != 'Y') {
+            break;
         }
     }
-
+    
+    // Display exit message
+    printf("\nThank you for using our ATM service.\n");
+    
+    // Free resources
+    freeConfigs();
+    
     return 0;
 }
 
-// ============================
-// Utility Functions
-// ============================
-void clearScreen() {
-#ifdef _WIN32
-    system("cls");
-#else
-    system("clear");
-#endif
+// Display the welcome banner
+void displayWelcomeBanner() {
+    printf("\n");
+    printf(" ____________________________________________________\n");
+    printf("|                                                    |\n");
+    printf("|              WELCOME TO ATM SYSTEM                 |\n");
+    printf("|                                                    |\n");
+    printf("|____________________________________________________|\n\n");
+}
+
+// Handle card authentication
+int handleCardAuthentication() {
+    int cardNumInt;
+    char cardNumber[20]; // String representation for functions that expect strings
+    char pinStr[10];
+    
+    printf("\n===== Customer Authentication =====\n");
+    printf("Please enter your card number: ");
+    scanf("%d", &cardNumInt);
+    
+    // Convert card number to string
+    sprintf(cardNumber, "%d", cardNumInt);
+    
+    // Check if card number is valid
+    if (!doesCardExist(cardNumInt)) {
+        writeErrorLog("Invalid card number entered");
+        printf("Invalid card number. Please try again.\n");
+        return -1;
+    }
+    
+    // Check if card is active
+    if (!isCardActive(cardNumInt)) {
+        writeErrorLog("Attempt to use inactive/blocked card");
+        printf("This card is not active or has been blocked. Please contact customer service.\n");
+        return -1;
+    }
+    
+    // Check if card is temporarily locked due to too many PIN attempts
+    if (isCardLockedOut(cardNumber, 0)) {
+        int attempts = getRemainingPINAttempts(cardNumber, 0);
+        printf("This card is temporarily locked due to too many incorrect PIN attempts.\n");
+        return -1;
+    }
+    
+    // Get PIN
+    printf("Please enter your PIN: ");
+    scanf("%s", pinStr);
+    
+    // Validate PIN
+    if (!validatePIN(cardNumber, pinStr, 0)) {
+        // Track failed PIN attempt
+        int attemptsLeft = trackPINAttempt(cardNumber, 0);
+        if (attemptsLeft > 0) {
+            printf("Invalid PIN. You have %d attempts remaining.\n", attemptsLeft);
+        }
+        writeErrorLog("Invalid PIN entered");
+        return -1;
+    }
+    
+    // Reset PIN attempts on successful validation
+    resetPINAttempts(cardNumber, 0);
+    
+    return cardNumInt;
 }

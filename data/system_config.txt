@@ -1,0 +1,9 @@
+Config ID | Config Name                | Config Value | Updated At
+----------|----------------------------|-------------|---------------------
+C80001    | ATM_WITHDRAWAL_LIMIT       | 25000       | 2025-01-01 00:00:00
+C80002    | MIN_BALANCE                | 500         | 2025-01-01 00:00:00
+C80003    | MAX_WRONG_PIN_ATTEMPTS     | 3           | 2025-01-01 00:00:00
+C80004    | SESSION_TIMEOUT_SECONDS    | 180         | 2025-01-01 00:00:00
+C80005    | DAILY_TRANSACTION_LIMIT    | 50000       | 2025-01-01 00:00:00
+C80006    | DEFAULT_LANGUAGE           | en          | 2025-01-01 00:00:00
+C80007    | MAINTENANCE_MODE           | false       | 2025-04-27 00:00:00
