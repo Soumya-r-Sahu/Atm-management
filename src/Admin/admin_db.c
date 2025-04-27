@@ -6,25 +6,39 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
-
-// File paths
-#define ADMIN_CREDENTIALS_FILE "data/admin_credentials.txt"
-#define TEMP_ADMIN_CRED_FILE "data/temp/temp_admin_credentials.txt"
-#define STATUS_FILE "data/status.txt"
+#include <limits.h>
 
 // ============================
 // Admin Credentials Operations
 // ============================
 
+// Get admin credentials file path based on testing mode
+static const char* getAdminCredentialsFilePath() {
+    return isTestingMode() ? TEST_ADMIN_CRED_FILE : PROD_ADMIN_CRED_FILE;
+}
+
+// Get status file path based on testing mode
+static const char* getStatusFilePath() {
+    return isTestingMode() ? TEST_STATUS_FILE : PROD_STATUS_FILE;
+}
+
 // Load admin credentials from file
 int loadAdminCredentials(char *adminId, char *adminPass) {
-    FILE *file = fopen(ADMIN_CREDENTIALS_FILE, "r");
+    if (adminId == NULL || adminPass == NULL) {
+        writeErrorLog("NULL pointers provided to loadAdminCredentials");
+        return 0;
+    }
+    
+    const char* filePath = getAdminCredentialsFilePath();
+    FILE *file = fopen(filePath, "r");
     if (file == NULL) {
-        writeErrorLog("Failed to open admin_credentials.txt while loading admin credentials");
+        char errorMsg[256];
+        sprintf(errorMsg, "Failed to open admin credentials file at %s", filePath);
+        writeErrorLog(errorMsg);
         return 0;
     }
 
-    char line[256];
+    char line[256] = {0};
     int found = 0;
     
     // Skip the header lines (first 3 lines including separator lines)
@@ -37,18 +51,19 @@ int loadAdminCredentials(char *adminId, char *adminPass) {
     }
     
     // Now read the actual admin data (first valid admin entry)
-    char username[50], role[20], lastLogin[30], status[10];
-    char passwordHash[65];
+    char username[50] = {0}, role[20] = {0}, lastLogin[30] = {0}, status[10] = {0};
+    char passwordHash[65] = {0};
     
     while (fgets(line, sizeof(line), file) != NULL) {
         // Skip separator lines
         if (line[0] == '+') continue;
         
         // Parse the table row format with pipe separators
-        if (sscanf(line, "| %s | %s | %s | %s | %s | %s |", 
+        if (sscanf(line, "| %49s | %49s | %64s | %19s | %29s | %9s |", 
                   adminId, username, passwordHash, role, lastLogin, status) >= 6) {
             // Copy the password hash to adminPass
-            strcpy(adminPass, passwordHash);
+            strncpy(adminPass, passwordHash, 64);
+            adminPass[64] = '\0';
             found = 1;
             break;
         }
@@ -66,10 +81,18 @@ int loadAdminCredentials(char *adminId, char *adminPass) {
 
 // Update admin credentials
 int updateAdminCredentials(const char *newAdminId, const char *newAdminPass) {
+    if (newAdminId == NULL || newAdminPass == NULL) {
+        writeErrorLog("NULL parameters provided to updateAdminCredentials");
+        return 0;
+    }
+    
     // First, read the existing file to maintain the table format
-    FILE *readFile = fopen(ADMIN_CREDENTIALS_FILE, "r");
+    const char* filePath = getAdminCredentialsFilePath();
+    FILE *readFile = fopen(filePath, "r");
     if (readFile == NULL) {
-        writeErrorLog("Failed to open admin_credentials.txt for reading while updating credentials");
+        char errorMsg[256];
+        sprintf(errorMsg, "Failed to open admin credentials file at %s for reading", filePath);
+        writeErrorLog(errorMsg);
         return 0;
     }
     
@@ -84,21 +107,37 @@ int updateAdminCredentials(const char *newAdminId, const char *newAdminPass) {
     }
     
     // Store existing admin entries
-    char entries[10][256]; // Assuming no more than 10 admin entries
+    char entries[10][256] = {{0}}; // Assuming no more than 10 admin entries with zero initialization
     int entryCount = 0;
     int targetEntryIndex = -1;
-    char line[256];
-    char adminId[50], username[50], passwordHash[65], role[20], lastLogin[30], status[10];
+    char line[256] = {0};
+    char adminId[50] = {0}, username[50] = {0}, passwordHash[65] = {0}; 
+    char role[20] = {0}, lastLogin[30] = {0}, status[10] = {0};
     
     while (fgets(line, sizeof(line), readFile) != NULL) {
+        // Check array bounds to prevent overflow
+        if (entryCount >= 10) {
+            fclose(readFile);
+            writeErrorLog("Too many admin entries in credentials file");
+            return 0;
+        }
+        
         // Skip table separator lines
         if (line[0] == '+') {
-            strcpy(entries[entryCount++], line);
+            strncpy(entries[entryCount++], line, sizeof(entries[0]) - 1);
             continue;
         }
         
+        // Reset variables before parsing
+        memset(adminId, 0, sizeof(adminId));
+        memset(username, 0, sizeof(username));
+        memset(passwordHash, 0, sizeof(passwordHash));
+        memset(role, 0, sizeof(role));
+        memset(lastLogin, 0, sizeof(lastLogin));
+        memset(status, 0, sizeof(status));
+        
         // Check if this is the target admin to update
-        if (sscanf(line, "| %s | %s | %s | %s | %s | %s |", 
+        if (sscanf(line, "| %49s | %49s | %64s | %19s | %29s | %9s |", 
                   adminId, username, passwordHash, role, lastLogin, status) >= 6) {
             if (strcmp(adminId, newAdminId) == 0) {
                 // Found the admin to update
@@ -106,15 +145,22 @@ int updateAdminCredentials(const char *newAdminId, const char *newAdminPass) {
             }
         }
         
-        strcpy(entries[entryCount++], line);
+        strncpy(entries[entryCount++], line, sizeof(entries[0]) - 1);
     }
     
     fclose(readFile);
     
-    // Now write back the file with the updated admin credentials
-    FILE *writeFile = fopen(ADMIN_CREDENTIALS_FILE, "w");
+    // Create temp file path with proper directory
+    char tempFileName[256] = {0};
+    sprintf(tempFileName, "%s/temp/temp_admin_credentials.txt", 
+            isTestingMode() ? TEST_DATA_DIR : PROD_DATA_DIR);
+    
+    // Now write to the temp file with the updated admin credentials
+    FILE *writeFile = fopen(tempFileName, "w");
     if (writeFile == NULL) {
-        writeErrorLog("Failed to open admin_credentials.txt for writing while updating credentials");
+        char errorMsg[256];
+        sprintf(errorMsg, "Failed to create temporary file at %s", tempFileName);
+        writeErrorLog(errorMsg);
         return 0;
     }
     
@@ -127,11 +173,18 @@ int updateAdminCredentials(const char *newAdminId, const char *newAdminPass) {
     for (int i = 0; i < entryCount; i++) {
         if (i == targetEntryIndex) {
             // This is the admin entry to update
+            // Reset variables before parsing
+            memset(adminId, 0, sizeof(adminId));
+            memset(username, 0, sizeof(username));
+            memset(passwordHash, 0, sizeof(passwordHash));
+            memset(role, 0, sizeof(role));
+            memset(lastLogin, 0, sizeof(lastLogin));
+            memset(status, 0, sizeof(status));
+            
             // Extract the values first
-            sscanf(entries[i], "| %s | %s | %s | %s | %s | %s |", 
+            sscanf(entries[i], "| %49s | %49s | %64s | %19s | %29s | %9s |", 
                   adminId, username, passwordHash, role, lastLogin, status);
-                  
-
+            
             // Write the updated line with new password hash
             fprintf(writeFile, "| %-14s | %-13s | %-32s | %-12s | %-19s | %-7s |\n", 
                    newAdminId, username, newAdminPass, role, lastLogin, status);
@@ -141,6 +194,30 @@ int updateAdminCredentials(const char *newAdminId, const char *newAdminPass) {
     }
     
     fclose(writeFile);
+    
+    // If target admin entry wasn't found, log warning but don't consider it an error
+    // as we might be adding a new admin entry
+    if (targetEntryIndex == -1) {
+        char warningMsg[150];
+        sprintf(warningMsg, "Admin ID %s not found in credentials file during update", newAdminId);
+        writeInfoLog(warningMsg);
+    }
+    
+    // Replace original file with updated one
+    if (remove(filePath) != 0) {
+        char errorMsg[150];
+        sprintf(errorMsg, "Failed to remove original credentials file at %s", filePath);
+        writeErrorLog(errorMsg);
+        remove(tempFileName);
+        return 0;
+    }
+    
+    if (rename(tempFileName, filePath) != 0) {
+        char errorMsg[150];
+        sprintf(errorMsg, "Failed to rename temp file from %s to %s", tempFileName, filePath);
+        writeErrorLog(errorMsg);
+        return 0;
+    }
     
     // Log the update
     char logMsg[100];
@@ -203,7 +280,7 @@ int createNewAccount(const char *accountHolderName, int cardNumber, int pin) {
         return 0;
     }
     
-    fprintf(cardFile, "%s  | %s     | %-16d | Debit     | %s  | Active  | %s\n", 
+    fprintf(cardFile, "%s | %s | %-16d | Debit     | %s | Active  | %s\n", 
             cardID, accountID, cardNumber, expiryDate, pinHash);
     fclose(cardFile);
     
@@ -383,40 +460,77 @@ int toggleServiceMode() {
 
 // Get current service status (0 = Online, 1 = Offline)
 int getServiceStatus() {
-    FILE *file = fopen(STATUS_FILE, "r");
+    const char* filePath = getStatusFilePath();
+    FILE *file = fopen(filePath, "r");
     if (file == NULL) {
-        writeErrorLog("Failed to open status.txt while getting service status");
+        char errorMsg[256] = {0};
+        sprintf(errorMsg, "Failed to open status file at %s while getting service status", filePath);
+        writeErrorLog(errorMsg);
         return 0; // Default to Online if file can't be read
     }
 
-    char status[20];
+    char status[50] = {0}; // Increased buffer size for safety
     if (fgets(status, sizeof(status), file) != NULL) {
         fclose(file);
-        if (strstr(status, "Offline") != NULL) {
+        // Case-insensitive check for "Offline" for robustness
+        if (strstr(status, "Offline") != NULL || strstr(status, "offline") != NULL) {
+            writeInfoLog("ATM service status checked: Offline");
             return 1; // ATM is Offline
         }
     } else {
         fclose(file);
-        writeErrorLog("Failed to read from status.txt");
+        writeErrorLog("Failed to read from status file - file may be empty");
         return 0; // Default to Online if read fails
     }
 
+    writeInfoLog("ATM service status checked: Online");
     return 0; // ATM is Online
 }
 
 // Set service status (0 = Online, 1 = Offline)
 int setServiceStatus(int isOutOfService) {
-    FILE *file = fopen(STATUS_FILE, "w");
+    const char* filePath = getStatusFilePath();
+    FILE *file = fopen(filePath, "w");
     if (file == NULL) {
-        writeErrorLog("Failed to open status.txt while setting service status");
+        char errorMsg[256] = {0};
+        sprintf(errorMsg, "Failed to open status file at %s while setting service status", filePath);
+        writeErrorLog(errorMsg);
         return 0;
     }
 
+    // First create backup of current status file
+    char backupFilePath[256] = {0};
+    sprintf(backupFilePath, "%s.bak", filePath);
+    
+    // Copy existing file to backup if it exists
+    FILE* existingFile = fopen(filePath, "r");
+    if (existingFile != NULL) {
+        char buffer[256] = {0};
+        FILE* backupFile = fopen(backupFilePath, "w");
+        
+        if (backupFile != NULL) {
+            while (fgets(buffer, sizeof(buffer), existingFile) != NULL) {
+                fputs(buffer, backupFile);
+            }
+            fclose(backupFile);
+        }
+        fclose(existingFile);
+    }
+
+    // Set the new status
     if (isOutOfService) {
-        fprintf(file, "Status: Offline");
+        if (fprintf(file, "Status: Offline") < 0) {
+            writeErrorLog("Failed to write to status file");
+            fclose(file);
+            return 0;
+        }
         writeAuditLog("ADMIN", "ATM service set to Offline");
     } else {
-        fprintf(file, "Status: Online");
+        if (fprintf(file, "Status: Online") < 0) {
+            writeErrorLog("Failed to write to status file");
+            fclose(file);
+            return 0;
+        }
         writeAuditLog("ADMIN", "ATM service set to Online");
     }
 

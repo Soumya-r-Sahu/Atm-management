@@ -31,6 +31,13 @@ void displayMainMenu(int cardNumber) {
     getCardHolderName(cardNumber, holderName, sizeof(holderName));
     getCardHolderPhone(cardNumber, phoneNumber, sizeof(phoneNumber));
     
+    // Display ATM greeting
+    printf("\n");
+    printf(" ___________________________________________________\n");
+    printf("|                                                   |\n");
+    printf("|              WELCOME %s                   \n", holderName);
+    printf("|___________________________________________________|\n\n");
+    
     do {
         // Check for session timeout
         currentTime = time(NULL);
@@ -169,6 +176,8 @@ void handleWithdrawal(int cardNumber, const char *username, const char *phoneNum
 // Handle money transfer operation
 void handleMoneyTransfer(int cardNumber, const char *username, const char *phoneNumber) {
     int targetCardNumber;
+    char accountID[20];
+    char branchCode[10];
     float amount;
     
     printf("\n===== MONEY TRANSFER =====\n");
@@ -182,6 +191,20 @@ void handleMoneyTransfer(int cardNumber, const char *username, const char *phone
     
     if (!doesCardExist(targetCardNumber)) {
         printf("\nError: Recipient card number is invalid.\n");
+        return;
+    }
+    
+    // Get recipient account ID
+    printf("Enter recipient's account ID: ");
+    scanf("%s", accountID);
+    
+    // Get recipient branch code
+    printf("Enter recipient's branch code: ");
+    scanf("%s", branchCode);
+    
+    // Validate account ID and branch code combination
+    if (!validateRecipientAccount(targetCardNumber, accountID, branchCode)) {
+        printf("\nError: Invalid account ID or branch code for the specified card.\n");
         return;
     }
     

@@ -92,7 +92,7 @@ int createAccount(const char* accountHolderName, int cardNumber, int pin) {
         return 0;
     }
     
-    fprintf(cardFile, "%s  | %s     | %-16d | Debit     | %s  | Active  | %s\n", 
+    fprintf(cardFile, "%s | %s | %-16d | Debit     | %s | Active  | %s\n", 
             cardID, accountID, cardNumber, expiryDate, pinHash);
     fclose(cardFile);
     

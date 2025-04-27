@@ -162,7 +162,7 @@ static CardType parseCardType(const char* typeStr) {
 
 // Find a card by card number
 static bool findCardByCardNumber(int cardNumber, Card* card) {
-    FILE* file = fopen(TEST_CREDENTIALS_FILE, "r");
+    FILE* file = fopen(getCardFilePath(), "r");
     if (file == NULL) {
         writeErrorLog("Failed to open card file");
         return false;
@@ -205,7 +205,7 @@ static bool findCardByCardNumber(int cardNumber, Card* card) {
 
 // Find an account by account ID
 static bool findAccountById(const char* accountId, Account* account) {
-    FILE* file = fopen(TEST_ACCOUNTING_FILE, "r");
+    FILE* file = fopen(getCustomerFilePath(), "r");
     if (file == NULL) {
         writeErrorLog("Failed to open account file");
         return false;
@@ -251,7 +251,7 @@ static bool findAccountById(const char* accountId, Account* account) {
 
 // Find a customer by customer ID
 static bool findCustomerById(const char* customerId, CustomerProfile* profile) {
-    FILE* file = fopen(TEST_DATA_DIR "/test_customer.txt", "r");
+    FILE* file = fopen(getCustomerFilePath(), "r");
     if (file == NULL) {
         writeErrorLog("Failed to open customer file");
         return false;
@@ -371,7 +371,7 @@ bool loadCardByCardNumber(int cardNumber, Card* card) {
 
 // Get recent transactions for an account
 int getRecentTransactions(const char* accountId, Transaction* transactions, int maxTransactions) {
-    FILE* file = fopen(TEST_DATA_DIR "/test_transaction.txt", "r");
+    FILE* file = fopen(TRANSACTIONS_LOG_FILE, "r");
     if (file == NULL) {
         writeErrorLog("Failed to open transaction file");
         return 0;

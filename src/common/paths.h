@@ -62,4 +62,18 @@ void setTestingMode(bool testing);
  */
 bool initializeDataFiles();
 
+/**
+ * Gets the path to the card file based on test/production mode
+ * 
+ * @return path to the card file
+ */
+const char* getCardFilePath();
+
+/**
+ * Gets the path to the customer file based on test/production mode
+ * 
+ * @return path to the customer file
+ */
+const char* getCustomerFilePath();
+
 #endif // PATHS_H

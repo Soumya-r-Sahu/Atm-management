@@ -16,4 +16,7 @@ void processByAdminRole(const char* role);
 int handleAdminAuthentication(int atmId);
 int handleAtmModeAuthentication(int atmId);
 
+// Admin main function (renamed from main in admin.c)
+int admin_main(void);
+
 #endif // ADMIN_INTERFACE_H

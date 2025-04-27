@@ -17,10 +17,11 @@ SRCS = src/main/main.c \
        src/common/paths.c \
        src/utils/language_support.c \
        src/config/config_manager.c \
-       src/Admin/admin_interface.c \
+       src/Admin/admin.c \
        src/Admin/admin_db.c \
        src/Admin/admin_menu.c \
        src/Admin/admin_operations.c \
+       src/Admin/admin_interface.c \
        src/transaction/transaction_manager.c \
        src/database/customer_profile.c \
        src/database/database_utils.c \
@@ -40,7 +41,7 @@ all: $(EXEC)
 
 # Build the unified executable
 $(EXEC): $(OBJS)
-	$(CC) $(CFLAGS) -o $@ $^
+	$(CC) $(CFLAGS) -o $@ $(OBJS) -lm
 
 # Clean up
 clean:

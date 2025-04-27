@@ -179,3 +179,13 @@ bool initializeDataFiles() {
     
     return success;
 }
+
+// Helper function to get the card file path
+const char* getCardFilePath() {
+    return isTestingMode() ? TEST_CREDENTIALS_FILE : PROD_DATA_DIR "/card.txt";
+}
+
+// Helper function to get the customer file path
+const char* getCustomerFilePath() {
+    return isTestingMode() ? TEST_DATA_DIR "/test_customer.txt" : PROD_DATA_DIR "/customer.txt";
+}

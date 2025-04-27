@@ -95,8 +95,8 @@ int validatePIN(const char* cardNumber, const char* pinStr, int isAdmin) {
         return 0;
     }
     
-    // Compare hashes
-    int result = (strcmp(inputHash, storedHash) == 0);
+    // Use secure hash comparison instead of strcmp
+    int result = secure_hash_compare(inputHash, storedHash);
     
     // Reset attempts on successful validation
     if (result) {
@@ -115,7 +115,7 @@ int validatePIN(const char* cardNumber, const char* pinStr, int isAdmin) {
         return 0; // Card is now blocked
     }
     
-    return 1; // Attempts still allowed
+    return result; // Return the comparison result
 }
 
 int changePIN(const char* cardNumber, const char* oldPin, const char* newPin, int isTestMode) {

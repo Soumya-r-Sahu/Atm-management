@@ -1,7 +1,7 @@
 [WELCOME]
-en=Welcome to Soumya Bank ATM
-hi=सौम्य बैंक एटीएम में आपका स्वागत है
-od=ସୌମ୍ୟା ବ୍ୟାଙ୍କ ଏଟିଏମକୁ ସ୍ୱାଗତ
+en=Welcome to Bank ATM
+hi=बैंक एटीएम में आपका स्वागत है
+od= ବ୍ୟାଙ୍କ ଏଟିଏମକୁ ସ୍ୱାଗତ
 
 [ENTER_CARD]
 en=Please insert your card or enter card number

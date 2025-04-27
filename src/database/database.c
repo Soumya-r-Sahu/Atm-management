@@ -125,7 +125,8 @@ bool validateCardWithHash(int cardNumber, const char* pinHash) {
                    cardID, accountID, cardNumberStr, cardType, expiryDate, status, storedPinHash) >= 7) {
             int storedCardNumber = atoi(cardNumberStr);
             if (storedCardNumber == cardNumber) {
-                if (strcmp(storedPinHash, pinHash) == 0) {
+                // Use secure hash comparison instead of strcmp
+                if (secure_hash_compare(storedPinHash, pinHash)) {
                     valid = true;
                 }
                 break;
@@ -318,29 +319,51 @@ bool getCardHolderPhone(int cardNumber, char* phone, size_t phoneSize) {
 
 // Fetch account balance for a card
 float fetchBalance(int cardNumber) {
-    // First, find the account ID from the card number
-    FILE* cardFile = fopen(getCardFilePath(), "r");
-    if (cardFile == NULL) {
-        writeErrorLog("Failed to open card.txt file");
+    if (cardNumber <= 0) {
+        writeErrorLog("Invalid card number provided to fetchBalance");
         return -1.0f;
     }
     
-    char line[256];
-    char accountID[10] = "";
+    const char* cardFilePath = getCardFilePath();
+    FILE* cardFile = fopen(cardFilePath, "r");
+    if (cardFile == NULL) {
+        char errorMsg[100];
+        sprintf(errorMsg, "Failed to open card file at %s", cardFilePath);
+        writeErrorLog(errorMsg);
+        return -1.0f;
+    }
+    
+    char line[256] = {0};
+    char accountID[20] = {0};  // Increased size for safety
+    bool found = false;
     
     // Skip header lines
-    fgets(line, sizeof(line), cardFile);
-    fgets(line, sizeof(line), cardFile);
+    if (fgets(line, sizeof(line), cardFile) == NULL || fgets(line, sizeof(line), cardFile) == NULL) {
+        writeErrorLog("Card file format error: missing header lines");
+        fclose(cardFile);
+        return -1.0f;
+    }
     
     // Format: Card ID | Account ID | Card Number | Card Type | Expiry Date | Status | PIN Hash
-    char cardID[10], accID[10], cardNumberStr[20], cardType[10], expiryDate[15], status[10], pinHash[65];
+    char cardID[20] = {0}, accID[20] = {0}, cardNumberStr[30] = {0};
+    char cardType[20] = {0}, expiryDate[30] = {0}, status[20] = {0}, pinHash[70] = {0};
     
     while (fgets(line, sizeof(line), cardFile) != NULL) {
-        if (sscanf(line, "%s | %s | %s | %s | %s | %s | %s", 
-                   cardID, accID, cardNumberStr, cardType, expiryDate, status, pinHash) >= 7) {
+        // Reset variables to avoid data leakage between iterations
+        memset(cardID, 0, sizeof(cardID));
+        memset(accID, 0, sizeof(accID));
+        memset(cardNumberStr, 0, sizeof(cardNumberStr));
+        memset(cardType, 0, sizeof(cardType));
+        memset(expiryDate, 0, sizeof(expiryDate));
+        memset(status, 0, sizeof(status));
+        memset(pinHash, 0, sizeof(pinHash));
+        
+        if (sscanf(line, "%19s | %19s | %29s | %19s | %29s | %19s | %69s", 
+                  cardID, accID, cardNumberStr, cardType, expiryDate, status, pinHash) >= 7) {
             int storedCardNumber = atoi(cardNumberStr);
             if (storedCardNumber == cardNumber) {
-                strcpy(accountID, accID);
+                strncpy(accountID, accID, sizeof(accountID) - 1);
+                found = true;
                 break;
             }
         }
@@ -348,65 +371,122 @@ float fetchBalance(int cardNumber) {
     
     fclose(cardFile);
     
-    if (strlen(accountID) == 0) {
+    if (!found || strlen(accountID) == 0) {
+        char errorMsg[100];
+        sprintf(errorMsg, "Card number %d not found in database", cardNumber);
+        writeErrorLog(errorMsg);
         return -1.0f; // Card number not found
     }
     
     // Now get the balance from customer.txt using the account ID
-    FILE* customerFile = fopen(getCustomerFilePath(), "r");
+    const char* customerFilePath = getCustomerFilePath();
+    FILE* customerFile = fopen(customerFilePath, "r");
     if (customerFile == NULL) {
-        writeErrorLog("Failed to open customer.txt file");
+        char errorMsg[100];
+        sprintf(errorMsg, "Failed to open customer file at %s", customerFilePath);
+        writeErrorLog(errorMsg);
         return -1.0f;
     }
     
     float balance = -1.0f;
+    found = false;
     
     // Skip header lines
-    fgets(line, sizeof(line), customerFile);
-    fgets(line, sizeof(line), customerFile);
+    if (fgets(line, sizeof(line), customerFile) == NULL || fgets(line, sizeof(line), customerFile) == NULL) {
+        writeErrorLog("Customer file format error: missing header lines");
+        fclose(customerFile);
+        return -1.0f;
+    }
     
     // Format: Customer ID | Account ID | Account Holder Name | Type | Status | Balance
-    char customerID[15], accIDFromFile[15], holderName[100], type[20], accountStatus[20], balanceStr[20];
+    char customerID[20] = {0}, accIDFromFile[20] = {0}, holderName[100] = {0};
+    char type[30] = {0}, accountStatus[30] = {0}, balanceStr[30] = {0};
     
     while (fgets(line, sizeof(line), customerFile) != NULL) {
-        if (sscanf(line, "%s | %s | %[^|] | %s | %s | %s", 
+        // Reset variables
+        memset(customerID, 0, sizeof(customerID));
+        memset(accIDFromFile, 0, sizeof(accIDFromFile));
+        memset(holderName, 0, sizeof(holderName));
+        memset(type, 0, sizeof(type));
+        memset(accountStatus, 0, sizeof(accountStatus));
+        memset(balanceStr, 0, sizeof(balanceStr));
+        
+        if (sscanf(line, "%19s | %19s | %99[^|] | %29s | %29s | %29s", 
                    customerID, accIDFromFile, holderName, type, accountStatus, balanceStr) >= 6) {
-            if (strcmp(accountID, accIDFromFile) == 0) {
+            if (strcmp(accIDFromFile, accountID) == 0) {
                 balance = atof(balanceStr);
+                found = true;
                 break;
             }
         }
     }
     
     fclose(customerFile);
+    
+    if (!found) {
+        char errorMsg[100];
+        sprintf(errorMsg, "Account ID %s not found in customer database", accountID);
+        writeErrorLog(errorMsg);
+    }
+    
     return balance;
 }
 
 // Update account balance for a card
 bool updateBalance(int cardNumber, float newBalance) {
-    // First, find the account ID from the card number
-    FILE* cardFile = fopen(getCardFilePath(), "r");
-    if (cardFile == NULL) {
-        writeErrorLog("Failed to open card.txt file");
+    if (cardNumber <= 0) {
+        writeErrorLog("Invalid card number provided to updateBalance");
         return false;
     }
     
-    char line[256];
-    char accountID[10] = "";
+    if (newBalance < 0) {
+        char errorMsg[100];
+        sprintf(errorMsg, "Attempted to set negative balance (%.2f) for card %d", newBalance, cardNumber);
+        writeErrorLog(errorMsg);
+        return false;
+    }
+    
+    // First, find the account ID from the card number
+    const char* cardFilePath = getCardFilePath();
+    FILE* cardFile = fopen(cardFilePath, "r");
+    if (cardFile == NULL) {
+        char errorMsg[100];
+        sprintf(errorMsg, "Failed to open card file at %s", cardFilePath);
+        writeErrorLog(errorMsg);
+        return false;
+    }
+    
+    char line[256] = {0};
+    char accountID[20] = {0};  // Increased size for safety
+    bool found = false;
     
     // Skip header lines
-    fgets(line, sizeof(line), cardFile);
-    fgets(line, sizeof(line), cardFile);
+    if (fgets(line, sizeof(line), cardFile) == NULL || fgets(line, sizeof(line), cardFile) == NULL) {
+        writeErrorLog("Card file format error: missing header lines");
+        fclose(cardFile);
+        return false;
+    }
     
     // Format: Card ID | Account ID | Card Number | Card Type | Expiry Date | Status | PIN Hash
-    char cardID[10], accID[10], cardNumberStr[20], cardType[10], expiryDate[15], status[10], pinHash[65];
+    char cardID[20] = {0}, accID[20] = {0}, cardNumberStr[30] = {0};
+    char cardType[20] = {0}, expiryDate[30] = {0}, status[20] = {0}, pinHash[70] = {0};
     
     while (fgets(line, sizeof(line), cardFile) != NULL) {
-        if (sscanf(line, "%s | %s | %s | %s | %s | %s | %s", 
-                   cardID, accID, cardNumberStr, cardType, expiryDate, status, pinHash) >= 7) {
+        // Reset variables to avoid data leakage between iterations
+        memset(cardID, 0, sizeof(cardID));
+        memset(accID, 0, sizeof(accID));
+        memset(cardNumberStr, 0, sizeof(cardNumberStr));
+        memset(cardType, 0, sizeof(cardType));
+        memset(expiryDate, 0, sizeof(expiryDate));
+        memset(status, 0, sizeof(status));
+        memset(pinHash, 0, sizeof(pinHash));
+        
+        if (sscanf(line, "%19s | %19s | %29s | %19s | %29s | %19s | %69s", 
+                  cardID, accID, cardNumberStr, cardType, expiryDate, status, pinHash) >= 7) {
             int storedCardNumber = atoi(cardNumberStr);
             if (storedCardNumber == cardNumber) {
-                strcpy(accountID, accID);
+                strncpy(accountID, accID, sizeof(accountID) - 1);
+                found = true;
                 break;
             }
         }
@@ -414,376 +494,380 @@ bool updateBalance(int cardNumber, float newBalance) {
     
     fclose(cardFile);
     
-    if (strlen(accountID) == 0) {
-        return false; // Card number not found
-    }
-    
-    // Now update the balance in the customer.txt file
-    FILE* customerFile = fopen(getCustomerFilePath(), "r");
-    if (customerFile == NULL) {
-        writeErrorLog("Failed to open customer.txt file");
+    if (!found || strlen(accountID) == 0) {
+        char errorMsg[100];
+        sprintf(errorMsg, "Card number %d not found in database", cardNumber);
+        writeErrorLog(errorMsg);
         return false;
     }
     
-    char tempFileName[100];
+    // Now update the balance in the customer.txt file
+    const char* customerFilePath = getCustomerFilePath();
+    FILE* customerFile = fopen(customerFilePath, "r");
+    if (customerFile == NULL) {
+        char errorMsg[100];
+        sprintf(errorMsg, "Failed to open customer file at %s", customerFilePath);
+        writeErrorLog(errorMsg);
+        return false;
+    }
+    
+    char tempFileName[256] = {0};
     sprintf(tempFileName, "%s/temp/temp_customer.txt", isTestingMode() ? TEST_DATA_DIR : PROD_DATA_DIR);
     
     FILE* tempFile = fopen(tempFileName, "w");
     if (tempFile == NULL) {
         fclose(customerFile);
-        writeErrorLog("Failed to create temporary customer file");
+        char errorMsg[100];
+        sprintf(errorMsg, "Failed to create temporary customer file at %s", tempFileName);
+        writeErrorLog(errorMsg);
         return false;
     }
     
     bool updated = false;
     
     // Copy header lines
-    fgets(line, sizeof(line), customerFile);
-    fputs(line, tempFile);
-    fgets(line, sizeof(line), customerFile);
+    if (fgets(line, sizeof(line), customerFile) == NULL || fgets(line, sizeof(line), customerFile) == NULL) {
+        writeErrorLog("Customer file format error: missing header lines");
+        fclose(customerFile);
+        fclose(tempFile);
+        remove(tempFileName);
+        return false;
+    }
+    
     fputs(line, tempFile);
     
-    char customerID[15], accIDFromFile[15], holderName[100], type[20], accountStatus[20], balanceStr[20];
+    // Reset the file pointer to read the second header line again
+    fseek(customerFile, 0, SEEK_SET);
+    fgets(line, sizeof(line), customerFile); // Skip first line
+    fgets(line, sizeof(line), customerFile); // Read second line
+    fputs(line, tempFile);
+    
+    char customerID[20] = {0}, accIDFromFile[20] = {0}, holderName[100] = {0};
+    char type[30] = {0}, accountStatus[30] = {0}, balanceStr[30] = {0};
     
     while (fgets(line, sizeof(line), customerFile) != NULL) {
-        char lineCopy[256];
-        strcpy(lineCopy, line);
+        // Reset variables
+        memset(customerID, 0, sizeof(customerID));
+        memset(accIDFromFile, 0, sizeof(accIDFromFile));
+        memset(holderName, 0, sizeof(holderName));
+        memset(type, 0, sizeof(type));
+        memset(accountStatus, 0, sizeof(accountStatus));
+        memset(balanceStr, 0, sizeof(balanceStr));
         
-        if (sscanf(lineCopy, "%s | %s | %[^|] | %s | %s | %s", 
+        if (sscanf(line, "%19s | %19s | %99[^|] | %29s | %29s | %29s", 
                    customerID, accIDFromFile, holderName, type, accountStatus, balanceStr) >= 6) {
-            if (strcmp(accountID, accIDFromFile) == 0) {
-                // Update the balance
-                fprintf(tempFile, "%s | %s | %s | %s | %s | %.2f\n", 
-                        customerID, accIDFromFile, holderName, type, accountStatus, newBalance);
-                updated = true;
-            } else {
-                fputs(line, tempFile);
+            if (strcmp(accIDFromFile, accountID) == 0) {
+                balance = atof(balanceStr);
+                found = true;
+                break;
             }
-        } else {
-            fputs(line, tempFile);
         }
     }
     
     fclose(customerFile);
-    fclose(tempFile);
     
-    if (updated) {
-        // Replace original file with updated one
-        if (remove(getCustomerFilePath()) == 0 && 
-            rename(tempFileName, getCustomerFilePath()) == 0) {
-            
-            char logMsg[100];
-            sprintf(logMsg, "Balance updated for account %s: %.2f", accountID, newBalance);
-            writeAuditLog("ACCOUNTING", logMsg);
-            return true;
-        }
+    if (!found) {
+        char errorMsg[100];
+        sprintf(errorMsg, "Account ID %s not found in customer database", accountID);
+        writeErrorLog(errorMsg);
     }
     
-    // Remove temp file if update was not successful
-    remove(tempFileName);
-    return false;
-}
-
-// Log a withdrawal for daily limit tracking
-void logWithdrawal(int cardNumber, float amount) {
-    char date[20];
-    getCurrentDate(date, sizeof(date));
-    
-    // Withdrawals log file path
-    char withdrawalsLogPath[200];
-    sprintf(withdrawalsLogPath, "%s/withdrawals.log", 
-            isTestingMode() ? TEST_DATA_DIR : PROD_DATA_DIR "/../logs");
-    
-    FILE* file = fopen(withdrawalsLogPath, "a");
-    if (file == NULL) {
-        writeErrorLog("Failed to open withdrawals log file");
-        return;
-    }
-    
-    // Log the withdrawal in format: Card Number | Date | Amount
-    fprintf(file, "%-11d | %-10s | %.2f\n", cardNumber, date, amount);
-    
-    fclose(file);
-    
-    // Also log to transaction log
-    logTransaction(cardNumber, TRANSACTION_WITHDRAWAL, amount, true);
-}
-
-// Get total withdrawals for a card on the current day
-float getDailyWithdrawals(int cardNumber) {
-    char date[20];
-    getCurrentDate(date, sizeof(date));
-    
-    // Withdrawals log file path
-    char withdrawalsLogPath[200];
-    sprintf(withdrawalsLogPath, "%s/withdrawals.log", 
-            isTestingMode() ? TEST_DATA_DIR : PROD_DATA_DIR "/../logs");
-    
-    FILE* file = fopen(withdrawalsLogPath, "r");
-    if (file == NULL) {
-        return 0.0f;  // No withdrawals or file doesn't exist yet
-    }
-    
-    char line[100];
-    float totalWithdrawals = 0.0f;
-    
-    while (fgets(line, sizeof(line), file) != NULL) {
-        int storedCardNumber;
-        char storedDate[20];
-        float storedAmount;
-        
-        if (sscanf(line, "%d | %s | %f", &storedCardNumber, storedDate, &storedAmount) == 3) {
-            if (storedCardNumber == cardNumber && strcmp(storedDate, date) == 0) {
-                totalWithdrawals += storedAmount;
-            }
-        }
-    }
-    
-    fclose(file);
-    return totalWithdrawals;
-}
-
-// Block a card
-bool blockCard(int cardNumber) {
-    FILE* file = fopen(getCardFilePath(), "r");
-    if (file == NULL) {
-        writeErrorLog("Failed to open card.txt file");
-        return false;
-    }
-    
-    char tempFileName[100];
-    sprintf(tempFileName, "%s/temp/temp_card.txt", isTestingMode() ? TEST_DATA_DIR : PROD_DATA_DIR);
-    
-    FILE* tempFile = fopen(tempFileName, "w");
-    if (tempFile == NULL) {
-        fclose(file);
-        writeErrorLog("Failed to create temporary card file");
-        return false;
-    }
-    
-    char line[256];
-    bool updated = false;
-    
-    // Copy header lines
-    fgets(line, sizeof(line), file);
-    fputs(line, tempFile);
-    fgets(line, sizeof(line), file);
-    fputs(line, tempFile);
-    
-    char cardID[10], accountID[10], cardNumberStr[20], cardType[10], expiryDate[15], status[10], pinHash[65];
-    
-    while (fgets(line, sizeof(line), file) != NULL) {
-        char lineCopy[256];
-        strcpy(lineCopy, line);
-        
-        if (sscanf(lineCopy, "%s | %s | %s | %s | %s | %s | %s", 
-                   cardID, accountID, cardNumberStr, cardType, expiryDate, status, pinHash) >= 7) {
-            int storedCardNumber = atoi(cardNumberStr);
-            if (storedCardNumber == cardNumber) {
-                // Update the status to blocked
-                fprintf(tempFile, "%s | %s | %s | %s | %s | %-7s | %s\n", 
-                        cardID, accountID, cardNumberStr, cardType, expiryDate, "Blocked", pinHash);
-                updated = true;
-            } else {
-                fputs(line, tempFile);
-            }
-        } else {
-            fputs(line, tempFile);
-        }
-    }
-    
-    fclose(file);
-    fclose(tempFile);
-    
-    if (updated) {
-        // Replace original file with updated one
-        if (remove(getCardFilePath()) == 0 && 
-            rename(tempFileName, getCardFilePath()) == 0) {
-            
-            char logMsg[100];
-            sprintf(logMsg, "Card %d has been blocked", cardNumber);
-            writeAuditLog("SECURITY", logMsg);
-            return true;
-        }
-    }
-    
-    // Remove temp file if update was not successful
-    remove(tempFileName);
-    return false;
-}
-
-// Unblock a card
-bool unblockCard(int cardNumber) {
-    FILE* file = fopen(getCardFilePath(), "r");
-    if (file == NULL) {
-        writeErrorLog("Failed to open card.txt file");
-        return false;
-    }
-    
-    char tempFileName[100];
-    sprintf(tempFileName, "%s/temp/temp_card.txt", isTestingMode() ? TEST_DATA_DIR : PROD_DATA_DIR);
-    
-    FILE* tempFile = fopen(tempFileName, "w");
-    if (tempFile == NULL) {
-        fclose(file);
-        writeErrorLog("Failed to create temporary card file");
-        return false;
-    }
-    
-    char line[256];
-    bool updated = false;
-    
-    // Copy header lines
-    fgets(line, sizeof(line), file);
-    fputs(line, tempFile);
-    fgets(line, sizeof(line), file);
-    fputs(line, tempFile);
-    
-    char cardID[10], accountID[10], cardNumberStr[20], cardType[10], expiryDate[15], status[10], pinHash[65];
-    
-    while (fgets(line, sizeof(line), file) != NULL) {
-        char lineCopy[256];
-        strcpy(lineCopy, line);
-        
-        if (sscanf(lineCopy, "%s | %s | %s | %s | %s | %s | %s", 
-                   cardID, accountID, cardNumberStr, cardType, expiryDate, status, pinHash) >= 7) {
-            int storedCardNumber = atoi(cardNumberStr);
-            if (storedCardNumber == cardNumber) {
-                // Update the status to active
-                fprintf(tempFile, "%s | %s | %s | %s | %s | %-7s | %s\n", 
-                        cardID, accountID, cardNumberStr, cardType, expiryDate, "Active", pinHash);
-                updated = true;
-            } else {
-                fputs(line, tempFile);
-            }
-        } else {
-            fputs(line, tempFile);
-        }
-    }
-    
-    fclose(file);
-    fclose(tempFile);
-    
-    if (updated) {
-        // Replace original file with updated one
-        if (remove(getCardFilePath()) == 0 && 
-            rename(tempFileName, getCardFilePath()) == 0) {
-            
-            char logMsg[100];
-            sprintf(logMsg, "Card %d has been unblocked", cardNumber);
-            writeAuditLog("SECURITY", logMsg);
-            return true;
-        }
-    }
-    
-    // Remove temp file if update was not successful
-    remove(tempFileName);
-    return false;
+    return balance;
 }
 
 // Log a transaction to the transactions log
 void logTransaction(int cardNumber, TransactionType type, float amount, bool success) {
-    // Get account ID from card number
-    char accountID[10] = "";
+    if (cardNumber <= 0) {
+        writeErrorLog("Invalid card number provided to logTransaction");
+        return;
+    }
     
-    FILE* cardFile = fopen(getCardFilePath(), "r");
-    if (cardFile != NULL) {
-        char line[256];
+    // Get account ID from card number
+    char accountID[20] = {0};  // Increased size for safety
+    
+    const char* cardFilePath = getCardFilePath();
+    FILE* cardFile = fopen(cardFilePath, "r");
+    if (cardFile == NULL) {
+        char errorMsg[100];
+        sprintf(errorMsg, "Failed to open card file at %s for transaction logging", cardFilePath);
+        writeErrorLog(errorMsg);
+        
+        // Use fallback account ID based on card number
+        sprintf(accountID, "C%d", cardNumber);
+    } else {
+        char line[256] = {0};
+        bool found = false;
         
         // Skip header lines
-        fgets(line, sizeof(line), cardFile);
-        fgets(line, sizeof(line), cardFile);
-        
-        char cardID[10], accID[10], cardNumberStr[20], cardType[10], expiryDate[15], status[10], pinHash[65];
-        
-        while (fgets(line, sizeof(line), cardFile) != NULL) {
-            if (sscanf(line, "%s | %s | %s | %s | %s | %s | %s", 
-                       cardID, accID, cardNumberStr, cardType, expiryDate, status, pinHash) >= 7) {
-                int storedCardNumber = atoi(cardNumberStr);
-                if (storedCardNumber == cardNumber) {
-                    strcpy(accountID, accID);
-                    break;
+        if (fgets(line, sizeof(line), cardFile) != NULL && fgets(line, sizeof(line), cardFile) != NULL) {
+            char cardID[20] = {0}, accID[20] = {0}, cardNumberStr[30] = {0};
+            char cardType[20] = {0}, expiryDate[30] = {0}, status[20] = {0}, pinHash[70] = {0};
+            
+            while (fgets(line, sizeof(line), cardFile) != NULL) {
+                // Reset variables to avoid data leakage between iterations
+                memset(cardID, 0, sizeof(cardID));
+                memset(accID, 0, sizeof(accID));
+                memset(cardNumberStr, 0, sizeof(cardNumberStr));
+                memset(cardType, 0, sizeof(cardType));
+                memset(expiryDate, 0, sizeof(expiryDate));
+                memset(status, 0, sizeof(status));
+                memset(pinHash, 0, sizeof(pinHash));
+                
+                if (sscanf(line, "%19s | %19s | %29s | %19s | %29s | %19s | %69s", 
+                           cardID, accID, cardNumberStr, cardType, expiryDate, status, pinHash) >= 7) {
+                    int storedCardNumber = atoi(cardNumberStr);
+                    if (storedCardNumber == cardNumber) {
+                        strncpy(accountID, accID, sizeof(accountID) - 1);
+                        found = true;
+                        break;
+                    }
                 }
             }
         }
         
         fclose(cardFile);
+        
+        // If account ID not found, use card number as a fallback
+        if (!found || strlen(accountID) == 0) {
+            sprintf(accountID, "C%d", cardNumber);
+        }
     }
     
-    // If account ID not found, use card number as a fallback
-    if (strlen(accountID) == 0) {
-        sprintf(accountID, "C%d", cardNumber);
-    }
-    
-    // Generate transaction ID
+    // Generate transaction ID with safety against overflow
     static int transactionCount = 0;
-    char transactionID[10];
+    if (transactionCount >= INT_MAX - 60000) {
+        transactionCount = 0;  // Reset to avoid overflow
+    }
+    char transactionID[20] = {0};
     sprintf(transactionID, "T%d", 60000 + (++transactionCount));
     
     // Get current timestamp
-    char timestamp[30];
+    char timestamp[30] = {0};
     getCurrentTimestamp(timestamp, sizeof(timestamp));
     
     // Get transaction type string
-    char transactionTypeStr[20];
+    char transactionTypeStr[30] = {0};
     switch (type) {
         case TRANSACTION_BALANCE_CHECK:
-            strcpy(transactionTypeStr, "Balance Check");
+            strncpy(transactionTypeStr, "Balance Check", sizeof(transactionTypeStr) - 1);
             break;
         case TRANSACTION_DEPOSIT:
-            strcpy(transactionTypeStr, "Deposit");
+            strncpy(transactionTypeStr, "Deposit", sizeof(transactionTypeStr) - 1);
             break;
         case TRANSACTION_WITHDRAWAL:
-            strcpy(transactionTypeStr, "Withdrawal");
+            strncpy(transactionTypeStr, "Withdrawal", sizeof(transactionTypeStr) - 1);
             break;
         case TRANSACTION_PIN_CHANGE:
-            strcpy(transactionTypeStr, "PIN Change");
+            strncpy(transactionTypeStr, "PIN Change", sizeof(transactionTypeStr) - 1);
             break;
         case TRANSACTION_MINI_STATEMENT:
-            strcpy(transactionTypeStr, "Mini Statement");
+            strncpy(transactionTypeStr, "Mini Statement", sizeof(transactionTypeStr) - 1);
             break;
         case TRANSACTION_MONEY_TRANSFER:
-            strcpy(transactionTypeStr, "Transfer");
+            strncpy(transactionTypeStr, "Transfer", sizeof(transactionTypeStr) - 1);
             break;
         case TRANSACTION_CARD_REQUEST:
-            strcpy(transactionTypeStr, "Card Request");
+            strncpy(transactionTypeStr, "Card Request", sizeof(transactionTypeStr) - 1);
             break;
         default:
-            strcpy(transactionTypeStr, "Other");
+            strncpy(transactionTypeStr, "Other", sizeof(transactionTypeStr) - 1);
     }
     
     // Format transaction remarks
-    char remarks[50];
-    if (type == TRANSACTION_BALANCE_CHECK || type == TRANSACTION_MINI_STATEMENT) {
-        strcpy(remarks, "Information Request");
-    } else if (type == TRANSACTION_DEPOSIT) {
-        strcpy(remarks, "Cash Deposit");
-    } else if (type == TRANSACTION_WITHDRAWAL) {
-        strcpy(remarks, "ATM Withdrawal");
-    } else if (type == TRANSACTION_PIN_CHANGE) {
-        strcpy(remarks, "Security Update");
-    } else if (type == TRANSACTION_MONEY_TRANSFER) {
-        strcpy(remarks, "Fund Transfer");
-    } else {
-        strcpy(remarks, "General Transaction");
+    char remarks[50] = {0};
+    switch (type) {
+        case TRANSACTION_BALANCE_CHECK:
+        case TRANSACTION_MINI_STATEMENT:
+            strncpy(remarks, "Information Request", sizeof(remarks) - 1);
+            break;
+        case TRANSACTION_DEPOSIT:
+            strncpy(remarks, "Cash Deposit", sizeof(remarks) - 1);
+            break;
+        case TRANSACTION_WITHDRAWAL:
+            strncpy(remarks, "ATM Withdrawal", sizeof(remarks) - 1);
+            break;
+        case TRANSACTION_PIN_CHANGE:
+            strncpy(remarks, "Security Update", sizeof(remarks) - 1);
+            break;
+        case TRANSACTION_MONEY_TRANSFER:
+            strncpy(remarks, "Fund Transfer", sizeof(remarks) - 1);
+            break;
+        default:
+            strncpy(remarks, "General Transaction", sizeof(remarks) - 1);
     }
     
-    // Open transactions log file
-    char transactionsLogPath[200];
-    sprintf(transactionsLogPath, "%s/transactions.log", 
-            isTestingMode() ? TEST_DATA_DIR : PROD_DATA_DIR "/../logs");
+    // Build consistent path for transactions log
+    char transactionsLogPath[256] = {0};
+    if (isTestingMode()) {
+        sprintf(transactionsLogPath, "%s/test_transaction.txt", TEST_DATA_DIR);
+    } else {
+        // Ensure consistent path handling for production
+        sprintf(transactionsLogPath, "%s/../logs/transactions.log", PROD_DATA_DIR);
+    }
     
     FILE* file = fopen(transactionsLogPath, "a");
     if (file == NULL) {
-        writeErrorLog("Failed to open transactions log file");
+        char errorMsg[100];
+        sprintf(errorMsg, "Failed to open transactions log file at %s", transactionsLogPath);
+        writeErrorLog(errorMsg);
         return;
     }
     
     // Log the transaction
-    fprintf(file, "%-14s | %-10s | %-15s | %-8.2f | %-19s | %-17s | %s\n", 
+    if (fprintf(file, "%-14s | %-10s | %-15s | %-8.2f | %-19s | %-17s | %s\n", 
             transactionID, accountID, transactionTypeStr, amount, timestamp, 
-            success ? "Success" : "Failed", remarks);
+            success ? "Success" : "Failed", remarks) < 0) {
+        writeErrorLog("Failed to write to transactions log file");
+    }
     
     fclose(file);
+    
+    char logMsg[150];
+    sprintf(logMsg, "Transaction logged: %s %s for card %d, amount: %.2f, status: %s", 
+           transactionTypeStr, remarks, cardNumber, amount, success ? "Success" : "Failed");
+    writeInfoLog(logMsg);
+}
+
+// Validate recipient account details (card number, account ID, branch code)
+bool validateRecipientAccount(int cardNumber, const char* accountID, const char* branchCode) {
+    if (cardNumber <= 0) {
+        writeErrorLog("Invalid card number provided to validateRecipientAccount");
+        return false;
+    }
+    
+    if (accountID == NULL || strlen(accountID) == 0) {
+        writeErrorLog("NULL or empty account ID provided to validateRecipientAccount");
+        return false;
+    }
+    
+    if (branchCode == NULL || strlen(branchCode) == 0) {
+        writeErrorLog("NULL or empty branch code provided to validateRecipientAccount");
+        return false;
+    }
+    
+    // First, find the account ID associated with the card number
+    const char* cardFilePath = getCardFilePath();
+    FILE* cardFile = fopen(cardFilePath, "r");
+    if (cardFile == NULL) {
+        char errorMsg[100];
+        sprintf(errorMsg, "Failed to open card file at %s for recipient validation", cardFilePath);
+        writeErrorLog(errorMsg);
+        return false;
+    }
+    
+    char line[256] = {0};
+    char cardAccountID[20] = {0};  // Increased size for safety
+    bool found = false;
+    
+    // Skip header lines
+    if (fgets(line, sizeof(line), cardFile) == NULL || fgets(line, sizeof(line), cardFile) == NULL) {
+        writeErrorLog("Card file format error: missing header lines");
+        fclose(cardFile);
+        return false;
+    }
+    
+    // Format: Card ID | Account ID | Card Number | Card Type | Expiry Date | Status | PIN Hash
+    char cardID[20] = {0}, storedAccountID[20] = {0}, cardNumberStr[30] = {0};
+    char cardType[20] = {0}, expiryDate[30] = {0}, status[20] = {0}, pinHash[70] = {0};
+    
+    while (fgets(line, sizeof(line), cardFile) != NULL) {
+        // Reset variables to avoid data leakage
+        memset(cardID, 0, sizeof(cardID));
+        memset(storedAccountID, 0, sizeof(storedAccountID));
+        memset(cardNumberStr, 0, sizeof(cardNumberStr));
+        memset(cardType, 0, sizeof(cardType));
+        memset(expiryDate, 0, sizeof(expiryDate));
+        memset(status, 0, sizeof(status));
+        memset(pinHash, 0, sizeof(pinHash));
+        
+        int storedCardNumber;
+        if (sscanf(line, "%19s | %19s | %d | %19s | %29s | %19s | %69s",
+                  cardID, storedAccountID, &storedCardNumber, cardType, expiryDate, status, pinHash) >= 7) {
+            if (storedCardNumber == cardNumber) {
+                strncpy(cardAccountID, storedAccountID, sizeof(cardAccountID) - 1);
+                found = true;
+                break;
+            }
+        }
+    }
+    
+    fclose(cardFile);
+    
+    if (!found || strlen(cardAccountID) == 0) {
+        char errorMsg[100];
+        sprintf(errorMsg, "Card number %d not found during recipient account validation", cardNumber);
+        writeErrorLog(errorMsg);
+        return false;
+    }
+    
+    // Now check if the provided account ID matches the account ID associated with the card
+    if (strcmp(cardAccountID, accountID) != 0) {
+        char errorMsg[150];
+        sprintf(errorMsg, "Account ID mismatch during recipient validation: provided %s, actual %s", accountID, cardAccountID);
+        writeErrorLog(errorMsg);
+        return false;
+    }
+    
+    // Finally, check if the branch code matches
+    const char* customerFilePath = getCustomerFilePath();
+    FILE* customerFile = fopen(customerFilePath, "r");
+    if (customerFile == NULL) {
+        char errorMsg[100];
+        sprintf(errorMsg, "Failed to open customer file at %s for branch validation", customerFilePath);
+        writeErrorLog(errorMsg);
+        return false;
+    }
+    
+    bool branchMatches = false;
+    
+    // Skip header lines
+    if (fgets(line, sizeof(line), customerFile) == NULL || fgets(line, sizeof(line), customerFile) == NULL) {
+        writeErrorLog("Customer file format error: missing header lines");
+        fclose(customerFile);
+        return false;
+    }
+    
+    // Format (for Customer file): Customer ID | Account ID | Account Holder Name | Type | Status | Balance | Branch Code
+    char customerID[20] = {0}, accIDFromFile[20] = {0}, holderName[100] = {0};
+    char type[20] = {0}, accountStatus[20] = {0}, balanceStr[30] = {0}, branchCodeFromFile[20] = {0};
+    
+    while (fgets(line, sizeof(line), customerFile) != NULL) {
+        // Reset variables
+        memset(customerID, 0, sizeof(customerID));
+        memset(accIDFromFile, 0, sizeof(accIDFromFile));
+        memset(holderName, 0, sizeof(holderName));
+        memset(type, 0, sizeof(type));
+        memset(accountStatus, 0, sizeof(accountStatus));
+        memset(balanceStr, 0, sizeof(balanceStr));
+        memset(branchCodeFromFile, 0, sizeof(branchCodeFromFile));
+        
+        // Try to parse the branch code if it's included in the file format
+        if (sscanf(line, "%19s | %19s | %99[^|] | %19s | %19s | %29s | %19s",
+                   customerID, accIDFromFile, holderName, type, accountStatus, balanceStr, branchCodeFromFile) >= 7) {
+            if (strcmp(accIDFromFile, accountID) == 0) {
+                if (strcmp(branchCodeFromFile, branchCode) == 0) {
+                    branchMatches = true;
+                } else {
+                    char errorMsg[150];
+                    sprintf(errorMsg, "Branch code mismatch: provided %s, actual %s for account %s", 
+                           branchCode, branchCodeFromFile, accountID);
+                    writeErrorLog(errorMsg);
+                }
+                break;
+            }
+        }
+    }
+    
+    fclose(customerFile);
+    
+    // Log successful validation
+    if (branchMatches) {
+        char logMsg[150];
+        sprintf(logMsg, "Successfully validated recipient: card %d, account %s, branch %s", 
+               cardNumber, accountID, branchCode);
+        writeInfoLog(logMsg);
+    }
+    
+    return branchMatches;
 }
 

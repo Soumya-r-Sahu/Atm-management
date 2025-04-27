@@ -11,4 +11,13 @@
  */
 char* sha256_hash(const char* input);
 
+/**
+ * Securely compares two hashes in constant time to prevent timing attacks
+ * 
+ * @param hash1 First hash to compare
+ * @param hash2 Second hash to compare
+ * @return 1 if hashes match, 0 otherwise
+ */
+int secure_hash_compare(const char* hash1, const char* hash2);
+
 #endif // HASH_UTILS_H

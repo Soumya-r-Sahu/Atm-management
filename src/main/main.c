@@ -56,32 +56,6 @@ int main(int argc, char *argv[]) {
     while (1) {
         displayWelcomeBanner();
         
-        // Display language options
-        printf("Choose language / भाषा चुनें / ଭାଷା ବାଛନ୍ତୁ:\n");
-        printf("1. English\n");
-        printf("2. हिन्दी (Hindi)\n");
-        printf("3. ଓଡ଼ିଆ (Odia)\n");
-        
-        int langChoice;
-        printf("Enter choice: ");
-        scanf("%d", &langChoice);
-        
-        // Set language based on user choice
-        switch (langChoice) {
-            case 1:
-                setLanguage(LANG_ENGLISH);
-                break;
-            case 2:
-                setLanguage(LANG_HINDI);
-                break;
-            case 3:
-                setLanguage(LANG_ODIA);
-                break;
-            default:
-                setLanguage(LANG_ENGLISH);
-                break;
-        }
-        
         // Mode selection menu
         int choice;
         
@@ -105,6 +79,32 @@ int main(int argc, char *argv[]) {
             scanf("%d", &atmId);
             
             if (handleAtmModeAuthentication(atmId)) {
+                // Display language options after ATM mode toggle
+                printf("\nChoose language / भाषा चुनें / ଭାଷା ବାଛନ୍ତୁ:\n");
+                printf("1. English\n");
+                printf("2. हिन्दी (Hindi)\n");
+                printf("3. ଓଡ଼ିଆ (Odia)\n");
+                
+                int langChoice;
+                printf("Enter choice: ");
+                scanf("%d", &langChoice);
+                
+                // Set language based on user choice
+                switch (langChoice) {
+                    case 1:
+                        setLanguage(LANG_ENGLISH);
+                        break;
+                    case 2:
+                        setLanguage(LANG_HINDI);
+                        break;
+                    case 3:
+                        setLanguage(LANG_ODIA);
+                        break;
+                    default:
+                        setLanguage(LANG_ENGLISH);
+                        break;
+                }
+                
                 // ATM authenticated, now handle regular customer card
                 int cardNumber = handleCardAuthentication();
                 

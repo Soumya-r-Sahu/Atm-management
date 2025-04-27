@@ -10,6 +10,7 @@ bool doesCardExist(int cardNumber);
 bool isCardActive(int cardNumber);
 bool validateCard(int cardNumber, int pin);
 bool validateCardWithHash(int cardNumber, const char* pinHash);
+bool validateRecipientAccount(int cardNumber, const char* accountID, const char* branchCode);
 
 // PIN management functions
 bool updatePIN(int cardNumber, int newPin);

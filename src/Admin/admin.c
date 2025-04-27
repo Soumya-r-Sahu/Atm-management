@@ -13,7 +13,8 @@
 #define ADMIN_LOCKOUT_DURATION 60 // seconds
 #define MAX_ADMIN_ATTEMPTS 3
 
-int main() {
+// Renamed from main() to admin_main() to avoid conflict with main.c
+int admin_main() {
     char adminId[50], adminPass[50];
     int choice, isLoggedIn = 0;
     int adminAttempts = MAX_ADMIN_ATTEMPTS;

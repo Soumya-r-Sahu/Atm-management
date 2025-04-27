@@ -195,3 +195,37 @@ char* sha256_hash(const char* input) {
     
     return hex_digest;
 }
+
+/**
+ * Securely compares two hashes in constant time to prevent timing attacks
+ * 
+ * @param hash1 First hash to compare
+ * @param hash2 Second hash to compare
+ * @return 1 if hashes match, 0 otherwise
+ */
+int secure_hash_compare(const char* hash1, const char* hash2) {
+    if (hash1 == NULL || hash2 == NULL) {
+        return 0; // NULL pointers don't match
+    }
+    
+    // Compute lengths of both hashes
+    size_t len1 = strlen(hash1);
+    size_t len2 = strlen(hash2);
+    
+    // If lengths differ, hashes don't match, but still do the comparison
+    // in constant time to prevent timing attacks
+    unsigned char result = (len1 == len2) ? 1 : 0;
+    
+    // Use the minimum length to prevent buffer overruns
+    size_t min_len = (len1 < len2) ? len1 : len2;
+    
+    // Perform constant-time comparison
+    // XOR each character and OR the result with our accumulated difference
+    // This ensures we always iterate through the entire string regardless of mismatches
+    for (size_t i = 0; i < min_len; i++) {
+        result &= (hash1[i] == hash2[i]) ? 1 : 0;
+    }
+    
+    // Return 1 if hashes match, 0 otherwise
+    return result;
+}
