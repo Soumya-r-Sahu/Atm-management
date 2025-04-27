@@ -5,12 +5,13 @@
 #include <stdio.h>
 #include <stdint.h>  // Added for uint32_t, uint8_t, etc.
 
-// Simple SHA-256 implementation for educational purposes
+// Simple SHA-256 implementation modified to produce shorter hashes
 // In a real-world application, use a cryptographic library like OpenSSL
 
-// SHA-256 constants
+// Modified hash size constants
 #define SHA256_BLOCK_SIZE 64
 #define SHA256_DIGEST_SIZE 32
+#define OUTPUT_DIGEST_SIZE 16  // New constant for shorter digest (16 bytes = 32 hex chars)
 
 // Circular right rotation
 #define ROTR(x, n) (((x) >> (n)) | ((x) << (32 - (n))))
@@ -162,7 +163,7 @@ static void sha256_final(sha256_ctx* ctx, uint8_t* digest) {
     }
 }
 
-// Compute SHA-256 hash of a string
+// Compute hash of a string - modified to return a shorter hash
 char* sha256_hash(const char* input) {
     if (input == NULL) {
         writeErrorLog("NULL input provided to sha256_hash");
@@ -171,7 +172,7 @@ char* sha256_hash(const char* input) {
     
     sha256_ctx ctx;
     uint8_t digest[SHA256_DIGEST_SIZE];
-    char* hex_digest = (char*)malloc(SHA256_DIGEST_SIZE * 2 + 1);
+    char* hex_digest = (char*)malloc(OUTPUT_DIGEST_SIZE * 2 + 1); // Allocate for shorter hash
     
     if (hex_digest == NULL) {
         writeErrorLog("Memory allocation failed in sha256_hash");
@@ -187,8 +188,8 @@ char* sha256_hash(const char* input) {
     // Finalize and get digest
     sha256_final(&ctx, digest);
     
-    // Convert digest to hex string
-    for (int i = 0; i < SHA256_DIGEST_SIZE; i++) {
+    // Convert only first OUTPUT_DIGEST_SIZE bytes to hex string
+    for (int i = 0; i < OUTPUT_DIGEST_SIZE; i++) {
         sprintf(&hex_digest[i * 2], "%02x", digest[i]);
     }
     

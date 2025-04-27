@@ -31,29 +31,126 @@ int loadAdminCredentials(char *adminId, char *adminPass) {
         return 0;
     }
 
-    if (fscanf(file, "%s %s", adminId, adminPass) != 2) {
-        fclose(file);
-        writeErrorLog("Invalid format in admin_credentials.txt");
+    char line[256];
+    int found = 0;
+    
+    // Skip the header lines (first 3 lines including separator lines)
+    for (int i = 0; i < 3; i++) {
+        if (fgets(line, sizeof(line), file) == NULL) {
+            fclose(file);
+            writeErrorLog("Admin credentials file format is invalid - missing header lines");
+            return 0;
+        }
+    }
+    
+    // Now read the actual admin data (first valid admin entry)
+    char username[50], role[20], lastLogin[30], status[10];
+    char passwordHash[65];
+    
+    while (fgets(line, sizeof(line), file) != NULL) {
+        // Skip separator lines
+        if (line[0] == '+') continue;
+        
+        // Parse the table row format with pipe separators
+        if (sscanf(line, "| %s | %s | %s | %s | %s | %s |", 
+                  adminId, username, passwordHash, role, lastLogin, status) >= 6) {
+            // Copy the password hash to adminPass
+            strcpy(adminPass, passwordHash);
+            found = 1;
+            break;
+        }
+    }
+    
+    fclose(file);
+    
+    if (!found) {
+        writeErrorLog("No valid admin credentials found in file");
         return 0;
     }
-
-    fclose(file);
+    
     return 1; // Credentials loaded successfully
 }
 
 // Update admin credentials in admin_credentials.txt file
 int updateAdminCredentials(const char *newAdminId, const char *newAdminPass) {
-    FILE *file = fopen(ADMIN_CRED_FILE, "w");
-    if (file == NULL) {
-        writeErrorLog("Failed to open admin_credentials.txt for updating credentials");
+    // First, read the existing file to maintain the table format
+    FILE *readFile = fopen(ADMIN_CRED_FILE, "r");
+    if (readFile == NULL) {
+        writeErrorLog("Failed to open admin_credentials.txt for reading while updating credentials");
         return 0;
     }
-
-    fprintf(file, "%s %s", newAdminId, newAdminPass);
-    fclose(file);
     
+    // Get the header lines and table format
+    char headerLines[3][256];
+    for (int i = 0; i < 3; i++) {
+        if (fgets(headerLines[i], sizeof(headerLines[i]), readFile) == NULL) {
+            fclose(readFile);
+            writeErrorLog("Admin credentials file format is invalid - missing header lines");
+            return 0;
+        }
+    }
+    
+    // Store existing admin entries
+    char entries[10][256]; // Assuming no more than 10 admin entries
+    int entryCount = 0;
+    int targetEntryIndex = -1;
+    char line[256];
+    char adminId[50], username[50], passwordHash[65], role[20], lastLogin[30], status[10];
+    
+    while (fgets(line, sizeof(line), readFile) != NULL) {
+        // Skip table separator lines
+        if (line[0] == '+') {
+            strcpy(entries[entryCount++], line);
+            continue;
+        }
+        
+        // Check if this is the target admin to update
+        if (sscanf(line, "| %s | %s | %s | %s | %s | %s |", 
+                  adminId, username, passwordHash, role, lastLogin, status) >= 6) {
+            if (strcmp(adminId, newAdminId) == 0) {
+                // Found the admin to update
+                targetEntryIndex = entryCount;
+            }
+        }
+        
+        strcpy(entries[entryCount++], line);
+    }
+    
+    fclose(readFile);
+    
+    // Now write back the file with the updated admin credentials
+    FILE *writeFile = fopen(ADMIN_CRED_FILE, "w");
+    if (writeFile == NULL) {
+        writeErrorLog("Failed to open admin_credentials.txt for writing while updating credentials");
+        return 0;
+    }
+    
+    // Write the header lines
+    for (int i = 0; i < 3; i++) {
+        fprintf(writeFile, "%s", headerLines[i]);
+    }
+    
+    // Write the entries, updating the target admin if found
+    for (int i = 0; i < entryCount; i++) {
+        if (i == targetEntryIndex) {
+            // This is the admin entry to update
+            // Extract the values first
+            sscanf(entries[i], "| %s | %s | %s | %s | %s | %s |", 
+                  adminId, username, passwordHash, role, lastLogin, status);
+                  
+            // Write the updated line with new password hash
+            fprintf(writeFile, "| %-14s | %-13s | %-32s | %-12s | %-19s | %-7s |\n", 
+                   newAdminId, username, newAdminPass, role, lastLogin, status);
+        } else {
+            fprintf(writeFile, "%s", entries[i]);
+        }
+    }
+    
+    fclose(writeFile);
+    
+    // Log the update
     char logMsg[100];
-    sprintf(logMsg, "Admin credentials updated successfully");
+    sprintf(logMsg, "Admin credentials updated successfully for %s", newAdminId);
     writeAuditLog("ADMIN", logMsg);
     
     return 1; // Credentials updated successfully
