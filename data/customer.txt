@@ -1,4 +1,9 @@
-Customer ID | Name      | DOB        | Address                      | Email                  | Mobile Number | KYC Status | Status  | Created At           | Last Login
-------------|-----------|------------|------------------------------|------------------------|--------------|------------|---------|---------------------|--------------------
-C10001      | Soumya    | 1990-05-12 | 123 Main Street, Mumbai      | soumya@example.com     | 9876543210   | Completed  | Active  | 2025-01-01 09:00:00 | 2025-04-26 10:15:20
-C10002      | Rahul     | 1988-08-22 | 456 Park Avenue, Delhi       | rahul@example.com      | 8765432109   | Completed  | Active  | 2025-01-05 10:15:00 | 2025-04-25 14:30:45
+Customer ID | Account ID | Account Holder Name | Type    | Status | Balance
+------------|------------|---------------------|---------|--------|--------
+C10001      | A10001     | Rahul Sharma        | Regular | Active | 25000.00
+C10002      | A10002     | Priya Patel         | Regular | Active | 13500.50
+C10003      | A10003     | Amit Kumar          | Regular | Active | 7800.25
+C10004      | A10004     | Neha Singh          | Regular | Active | 32400.75
+C10005      | A10005     | Rajesh Gupta        | Regular | Active | 9250.00
+C10006      | A10006     | Kavita Reddy        | Premium | Active | 45000.00
+C10007      | A10007     | Vikram Malhotra     | Premium | Active | 68000.00

@@ -1,215 +1,264 @@
 #include "admin_operations.h"
 #include "admin_db.h"
 #include "../utils/logger.h"
+#include "../database/database.h"
+#include "../common/paths.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
 
-// ============================
-// Admin Authentication Functions
-// ============================
+// Path to the ATM data file
+#define ATM_DATA_FILE "data/atm_data.txt"
+#define TEMP_ATM_DATA_FILE "data/temp/atm_data_temp.txt"
 
-// Authenticate admin credentials
-int authenticateAdmin(const char* adminId, const char* adminPass) {
-    char storedAdminId[50], storedAdminPass[50];
-    
-    // Load stored admin credentials
-    if (!loadAdminCredentials(storedAdminId, storedAdminPass)) {
-        printf("Error: Unable to load admin credentials.\n");
-        return 0;
+// Create new customer account with the given details
+int createCustomerAccount(const char *accountHolderName, int *cardNumber, int *pin) {
+    // Generate random card number and PIN if not provided
+    if (*cardNumber <= 0) {
+        *cardNumber = generateUniqueCardNumber();
     }
     
-    // Compare with entered credentials
-    if (strcmp(adminId, storedAdminId) == 0 && strcmp(adminPass, storedAdminPass) == 0) {
-        writeAuditLog("ADMIN", "Successful admin login");
-        return 1; // Authentication successful
+    if (*pin <= 0) {
+        *pin = generateRandomPin();
     }
     
-    writeAuditLog("ADMIN", "Failed admin login attempt");
-    return 0; // Authentication failed
+    // Log before trying to create the account
+    char logMsg[100];
+    sprintf(logMsg, "Attempting to create account for %s with card %d", 
+            accountHolderName, *cardNumber);
+    writeAuditLog("ADMIN", logMsg);
+    
+    // Create the account using the admin_db function
+    int result = createNewAccount(accountHolderName, *cardNumber, *pin);
+    
+    if (result) {
+        sprintf(logMsg, "Successfully created account for %s", accountHolderName);
+    } else {
+        sprintf(logMsg, "Failed to create account for %s", accountHolderName);
+    }
+    writeAuditLog("ADMIN", logMsg);
+    
+    return result;
 }
 
-// Handle admin lockout after multiple failed attempts
-void handleAdminLockout(int* attempts, time_t* lockoutStartTime, int lockoutDuration) {
-    if (*attempts <= 0) {
-        time_t currentTime = time(NULL);
-        if (*lockoutStartTime == 0) {
-            // Start lockout
-            *lockoutStartTime = currentTime;
-            printf("Admin account is locked for %d seconds due to multiple failed attempts.\n", 
-                  lockoutDuration);
-            writeAuditLog("ADMIN", "Admin account locked due to multiple failed attempts");
-        } else if (difftime(currentTime, *lockoutStartTime) >= lockoutDuration) {
-            // Lockout period is over
-            *attempts = 3; // Reset attempts
-            *lockoutStartTime = 0; // Reset lockout
-            printf("Lockout period has ended. You may try again.\n");
-        } else {
-            // Still in lockout period
-            int remainingSeconds = lockoutDuration - (int)difftime(currentTime, *lockoutStartTime);
-            printf("Admin account is locked. Please wait %d seconds.\n", remainingSeconds);
+// Block a customer's card
+void blockCustomerCard(int cardNumber) {
+    // First check if the card exists
+    if (!doesCardExist(cardNumber)) {
+        printf("\nError: Card number %d does not exist.\n", cardNumber);
+        return;
+    }
+    
+    // Check if card is already blocked
+    FILE* file = fopen(getCardFilePath(), "r");
+    if (file == NULL) {
+        printf("\nError: Could not open card file for reading.\n");
+        writeErrorLog("Failed to open card file while blocking card");
+        return;
+    }
+    
+    char line[256];
+    int storedCardNumber;
+    char status[10];
+    int found = 0;
+    
+    // Skip header lines
+    fgets(line, sizeof(line), file);
+    fgets(line, sizeof(line), file);
+    
+    // Format: Card ID | Account ID | Card Number | Card Type | Expiry Date | Status | PIN Hash
+    char cardID[10], accountID[10], cardNumberStr[20], cardType[10], expiryDate[15], cardStatus[10], pinHash[65];
+    
+    while (fgets(line, sizeof(line), file) != NULL) {
+        if (sscanf(line, "%s | %s | %s | %s | %s | %s | %s", 
+                   cardID, accountID, cardNumberStr, cardType, expiryDate, cardStatus, pinHash) >= 7) {
+            storedCardNumber = atoi(cardNumberStr);
+            if (storedCardNumber == cardNumber) {
+                found = 1;
+                strcpy(status, cardStatus);
+                break;
+            }
         }
     }
-}
-
-// ============================
-// Core Admin Operations
-// ============================
-
-// Create a new ATM account
-void createAccount() {
-    char accountHolderName[50];
-    int cardNumber, pin;
-    float initialBalance;
     
-    printf("\n===== Create New Account =====\n");
+    fclose(file);
     
-    // Get account holder name
-    printf("Enter Account Holder Name: ");
-    scanf(" %[^\n]s", accountHolderName);
+    if (!found) {
+        printf("\nError: Card not found in the database.\n");
+        return;
+    }
     
-    // Generate unique card number
-    cardNumber = generateUniqueCardNumber();
+    if (strstr(status, "Blocked") != NULL) {
+        printf("\nCard is already blocked.\n");
+        return;
+    }
     
-    // Generate random PIN
-    pin = generateRandomPin();
-    
-    // Get initial balance
-    printf("Enter Initial Balance (optional): ");
-    scanf("%f", &initialBalance);
-    
-    // Create the account
-    if (createNewAccount(accountHolderName, cardNumber, pin)) {
-        // Update the balance if initial balance was provided
-        if (initialBalance > 0) {
-            updateBalance(cardNumber, initialBalance);
-        }
+    // Block the card using database function
+    if (blockCard(cardNumber)) {
+        printf("\nCard %d has been blocked successfully.\n", cardNumber);
         
-        // Show confirmation
-        printf("\nAccount created successfully!\n");
-        printf("Account Holder: %s\n", accountHolderName);
-        printf("Card Number: %d\n", cardNumber);
-        printf("PIN: %d\n", pin);
-        printf("Initial Balance: $%.2f\n", initialBalance);
-        printf("\nPlease share these details with the account holder.\n");
-        
-        // Log the activity
-        char logMsg[200];
-        sprintf(logMsg, "Created new account for %s with card number %d", 
-                accountHolderName, cardNumber);
+        // Log the action
+        char logMsg[100];
+        sprintf(logMsg, "Admin blocked card %d", cardNumber);
         writeAuditLog("ADMIN", logMsg);
     } else {
-        printf("\nError: Failed to create account. Please try again.\n");
-        writeErrorLog("Failed to create new account");
+        printf("\nError: Failed to block card %d.\n", cardNumber);
+        writeErrorLog("Failed to block card via admin interface");
     }
 }
 
-// Regenerate PIN for a card
-void regenerateCardPin(int cardNumber) {
-    if (!isCardNumberUnique(cardNumber)) { // If not unique, it exists
-        int newPIN = generateRandomPin();
-        
-        if (updateCardDetails(cardNumber, newPIN, NULL)) {
-            printf("\nPIN successfully changed for card number %d.\n", cardNumber);
-            printf("New PIN: %d\n", newPIN);
-            printf("\nPlease share this new PIN with the account holder.\n");
-            
-            // Log the activity
-            char logMsg[100];
-            sprintf(logMsg, "Regenerated PIN for card number %d", cardNumber);
-            writeAuditLog("ADMIN", logMsg);
-        } else {
-            printf("\nError: Failed to change PIN. Please try again.\n");
-            writeErrorLog("Failed to regenerate PIN");
-        }
-    } else {
+// Unblock a customer's card
+void unblockCustomerCard(int cardNumber) {
+    // First check if the card exists
+    if (!doesCardExist(cardNumber)) {
         printf("\nError: Card number %d does not exist.\n", cardNumber);
-        writeErrorLog("Attempted to regenerate PIN for non-existent card");
+        return;
+    }
+    
+    // Check if card is already active
+    FILE* file = fopen(getCardFilePath(), "r");
+    if (file == NULL) {
+        printf("\nError: Could not open card file for reading.\n");
+        writeErrorLog("Failed to open card file while unblocking card");
+        return;
+    }
+    
+    char line[256];
+    int storedCardNumber;
+    char status[10];
+    int found = 0;
+    
+    // Skip header lines
+    fgets(line, sizeof(line), file);
+    fgets(line, sizeof(line), file);
+    
+    // Format: Card ID | Account ID | Card Number | Card Type | Expiry Date | Status | PIN Hash
+    char cardID[10], accountID[10], cardNumberStr[20], cardType[10], expiryDate[15], cardStatus[10], pinHash[65];
+    
+    while (fgets(line, sizeof(line), file) != NULL) {
+        if (sscanf(line, "%s | %s | %s | %s | %s | %s | %s", 
+                   cardID, accountID, cardNumberStr, cardType, expiryDate, cardStatus, pinHash) >= 7) {
+            storedCardNumber = atoi(cardNumberStr);
+            if (storedCardNumber == cardNumber) {
+                found = 1;
+                strcpy(status, cardStatus);
+                break;
+            }
+        }
+    }
+    
+    fclose(file);
+    
+    if (!found) {
+        printf("\nError: Card not found in the database.\n");
+        return;
+    }
+    
+    if (strstr(status, "Active") != NULL) {
+        printf("\nCard is already active.\n");
+        return;
+    }
+    
+    // Unblock the card using database function
+    if (unblockCard(cardNumber)) {
+        printf("\nCard %d has been unblocked successfully.\n", cardNumber);
+        
+        // Log the action
+        char logMsg[100];
+        sprintf(logMsg, "Admin unblocked card %d", cardNumber);
+        writeAuditLog("ADMIN", logMsg);
+    } else {
+        printf("\nError: Failed to unblock card %d.\n", cardNumber);
+        writeErrorLog("Failed to unblock card via admin interface");
     }
 }
 
-// Toggle card status (Active/Blocked)
-void toggleCardStatus(int cardNumber) {
-    if (!isCardNumberUnique(cardNumber)) { // If not unique, it exists
-        // Determine current status
-        FILE *file = fopen("../data/credentials.txt", "r");
-        if (file == NULL) {
-            printf("\nError: Unable to read card status.\n");
-            writeErrorLog("Failed to read card status");
-            return;
-        }
-        
-        char line[256];
-        int storedCardNumber;
-        char storedUsername[50], storedStatus[10];
-        int storedPIN;
-        int found = 0;
-        
-        // Skip header lines
-        fgets(line, sizeof(line), file);
-        fgets(line, sizeof(line), file);
-        
-        while (fscanf(file, "%49[^|] | %d | %d | %9s", 
-                     storedUsername, &storedCardNumber, &storedPIN, storedStatus) == 4) {
+// Change customer card status (block/unblock)
+void changeCardStatus(int cardNumber) {
+    // First check if the card exists
+    if (!doesCardExist(cardNumber)) {
+        printf("\nError: Card number %d does not exist.\n", cardNumber);
+        return;
+    }
+    
+    // Check card's current status
+    FILE* file = fopen(getCardFilePath(), "r");
+    if (file == NULL) {
+        printf("\nError: Could not open card file.\n");
+        return;
+    }
+    
+    char line[256];
+    int storedCardNumber;
+    char storedUsername[50], storedStatus[10];
+    int found = 0;
+    
+    // Skip header lines
+    fgets(line, sizeof(line), file);
+    fgets(line, sizeof(line), file);
+    
+    // Format: Card ID | Account ID | Card Number | Card Type | Expiry Date | Status | PIN Hash
+    char cardID[10], accountID[10], cardNumberStr[20], cardType[10], expiryDate[15], status[10], pinHash[65];
+    
+    while (fgets(line, sizeof(line), file) != NULL) {
+        if (sscanf(line, "%s | %s | %s | %s | %s | %s | %s", 
+                   cardID, accountID, cardNumberStr, cardType, expiryDate, status, pinHash) >= 7) {
+            storedCardNumber = atoi(cardNumberStr);
             if (storedCardNumber == cardNumber) {
                 found = 1;
                 break;
             }
         }
-        
-        fclose(file);
-        
-        if (!found) {
-            printf("\nError: Card number %d does not exist.\n", cardNumber);
-            return;
-        }
-        
-        // Ask for new status
-        printf("\nCurrent status: %s\n", storedStatus);
-        printf("Enter new status (1 for Active, 2 for Blocked): ");
-        int statusChoice;
-        scanf("%d", &statusChoice);
-        
-        const char* newStatus;
-        if (statusChoice == 1) {
-            newStatus = "Active";
-        } else if (statusChoice == 2) {
-            newStatus = "Blocked";
-        } else {
-            printf("\nError: Invalid status choice.\n");
-            return;
-        }
-        
-        // Update the status
-        if (updateCardDetails(cardNumber, -1, newStatus)) {
-            printf("\nCard status successfully changed to %s.\n", newStatus);
-            
-            // Log the activity
-            char logMsg[100];
-            sprintf(logMsg, "Changed status to %s for card number %d", 
-                   newStatus, cardNumber);
-            writeAuditLog("ADMIN", logMsg);
-        } else {
-            printf("\nError: Failed to change card status. Please try again.\n");
-            writeErrorLog("Failed to update card status");
-        }
-    } else {
+    }
+    
+    fclose(file);
+    
+    if (!found) {
         printf("\nError: Card number %d does not exist.\n", cardNumber);
-        writeErrorLog("Attempted to toggle status for non-existent card");
+        return;
+    }
+    
+    // Ask for new status
+    printf("\nCurrent status: %s\n", status);
+    printf("Enter new status (1 for Active, 2 for Blocked): ");
+    int statusChoice;
+    scanf("%d", &statusChoice);
+    
+    const char* newStatus;
+    if (statusChoice == 1) {
+        newStatus = "Active";
+    } else if (statusChoice == 2) {
+        newStatus = "Blocked";
+    } else {
+        printf("\nInvalid status choice.\n");
+        return;
+    }
+    
+    // Update the card details
+    if (updateCardDetails(cardNumber, -1, newStatus)) {
+        printf("\nCard status updated successfully to '%s'.\n", newStatus);
+        
+        // Log the activity
+        char logMsg[100];
+        sprintf(logMsg, "Changed card %d status to '%s'", cardNumber, newStatus);
+        writeAuditLog("ADMIN", logMsg);
+    } else {
+        printf("\nError: Failed to update card status.\n");
+        writeErrorLog("Failed to update card status via admin interface");
     }
 }
 
-// Update ATM status (Online, Offline, Under Maintenance)
+// Update ATM status
 int updateAtmStatus(const char* atmId, const char* newStatus) {
-    FILE* file = fopen("data/atm_data.txt", "r");
+    FILE* file = fopen(ATM_DATA_FILE, "r");
     if (file == NULL) {
         writeErrorLog("Failed to open ATM data file for reading");
         return 0; // Failed to open file
     }
     
     // Create a temporary file for writing the updated data
-    FILE* tempFile = fopen("data/temp/atm_data_temp.txt", "w");
+    FILE* tempFile = fopen(TEMP_ATM_DATA_FILE, "w");
     if (tempFile == NULL) {
         fclose(file);
         writeErrorLog("Failed to create temporary file for ATM data update");
@@ -272,23 +321,22 @@ int updateAtmStatus(const char* atmId, const char* newStatus) {
     fclose(file);
     fclose(tempFile);
     
-    // Check if ATM was found
     if (!found) {
-        remove("data/temp/atm_data_temp.txt"); // Clean up temp file
-        writeErrorLog("ATM ID not found during status update");
-        return 0; // ATM ID not found
+        remove(TEMP_ATM_DATA_FILE);
+        writeErrorLog("ATM ID not found in ATM data file");
+        return 0;
     }
     
-    // Replace the original file with the updated file
-    if (remove("data/atm_data.txt") != 0) {
-        writeErrorLog("Failed to remove original ATM data file during update");
-        return 0; // Failed to remove original file
+    // Replace the original file with the updated temp file
+    if (remove(ATM_DATA_FILE) != 0) {
+        writeErrorLog("Failed to delete original ATM data file");
+        return 0;
     }
     
-    if (rename("data/temp/atm_data_temp.txt", "data/atm_data.txt") != 0) {
-        writeErrorLog("Failed to rename temporary ATM data file during update");
-        return 0; // Failed to rename file
+    if (rename(TEMP_ATM_DATA_FILE, ATM_DATA_FILE) != 0) {
+        writeErrorLog("Failed to rename temp ATM data file");
+        return 0;
     }
     
-    return 1; // Success
+    return 1; // Update successful
 }

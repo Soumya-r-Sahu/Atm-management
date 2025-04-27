@@ -2,3 +2,8 @@ Card ID | Account ID | Card Number      | Card Type | Expiry Date | Status  | PI
 --------|------------|-----------------|-----------|-------------|---------|------------------------------------------
 D10001  | A10001     | 100041          | Debit     | 2026-05-31  | Active  | 5fff864d27239fa252f76a884f2d4273
 D10002  | A10002     | 106334          | Debit     | 2027-08-31  | Active  | bf1889006d18a1b40d0791c50436d7ea
+D10003  | A10003     | 120578          | Debit     | 2027-04-27  | Active  | 769ce52a0423048bb632063f2051bcff
+D10004  | A10004     | 138972          | Debit     | 2027-04-27  | Active  | 28fdc9b17c2617c24aa8e5de1f6fdeac
+D10005  | A10005     | 145039          | Debit     | 2027-04-27  | Active  | abf6c4227a94db45b60b02f1e54c5b82
+D10006  | A10006     | 159746          | Credit    | 2027-04-27  | Active  | f9a02e743377818840c1738bb9c0b1ca
+D10007  | A10007     | 162485          | Credit    | 2027-04-27  | Active  | 2389319f9c22b8851a8d9edfc2fe9085

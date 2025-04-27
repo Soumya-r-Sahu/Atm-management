@@ -78,7 +78,7 @@ TransactionResult performDeposit(int cardNumber, float amount, const char* usern
         return result;
     }
     
-    // Perform deposit
+    // Perform deposit by updating balance
     float newBalance = oldBalance + amount;
     if (updateBalance(cardNumber, newBalance)) {
         result.success = 1;
@@ -116,13 +116,25 @@ TransactionResult performWithdrawal(int cardNumber, float amount, const char* us
 
     // Get withdrawal limit from system configuration
     int withdrawalLimit = getConfigValueInt(CONFIG_ATM_WITHDRAWAL_LIMIT);
-    if (withdrawalLimit < 0) withdrawalLimit = 25000; // Default if config not found
+    if (withdrawalLimit <= 0) {
+        withdrawalLimit = 25000; // Default limit if not configured
+    }
 
-    // Get daily transaction limit
+    // Get daily transaction limit from system configuration
     int dailyLimit = getConfigValueInt(CONFIG_DAILY_TRANSACTION_LIMIT);
-    if (dailyLimit < 0) dailyLimit = 50000; // Default if config not found
+    if (dailyLimit <= 0) {
+        dailyLimit = 50000; // Default limit if not configured
+    }
     
-    // Check if amount exceeds the withdrawal limit
+    // Validate withdrawal amount
+    if (amount <= 0) {
+        result.success = 0;
+        strcpy(result.message, "Error: Invalid withdrawal amount");
+        logTransaction(cardNumber, TRANSACTION_WITHDRAWAL, amount, 0);
+        return result;
+    }
+    
+    // Check if amount exceeds the ATM withdrawal limit
     if (amount > withdrawalLimit) {
         result.success = 0;
         sprintf(result.message, "Error: Amount exceeds withdrawal limit of $%d", withdrawalLimit);
@@ -130,12 +142,11 @@ TransactionResult performWithdrawal(int cardNumber, float amount, const char* us
         return result;
     }
     
-    // Check daily transaction total
-    float dailyTotal = getDailyWithdrawals(cardNumber);
-    if (dailyTotal + amount > dailyLimit) {
+    // Check if amount exceeds daily withdrawal limit
+    float todayWithdrawals = getDailyWithdrawals(cardNumber);
+    if (todayWithdrawals + amount > dailyLimit) {
         result.success = 0;
-        sprintf(result.message, "Error: Transaction would exceed your daily limit of $%d. Remaining limit: $%.2f", 
-                dailyLimit, dailyLimit - dailyTotal);
+        sprintf(result.message, "Error: Would exceed daily transaction limit of $%d", dailyLimit);
         logTransaction(cardNumber, TRANSACTION_WITHDRAWAL, amount, 0);
         return result;
     }
@@ -203,7 +214,7 @@ TransactionResult getMiniStatement(int cardNumber, const char* username) {
     
     // Get account ID from card number
     char accountID[10] = "";
-    FILE* cardFile = fopen(CREDENTIALS_FILE, "r");
+    FILE* cardFile = fopen(getCardFilePath(), "r");
     if (cardFile != NULL) {
         char line[256];
         
@@ -229,7 +240,7 @@ TransactionResult getMiniStatement(int cardNumber, const char* username) {
     
     // If account ID not found, use card number as a fallback
     if (strlen(accountID) == 0) {
-        sprintf(accountID, "C%d", cardNumber);
+        sprintf(accountID, "A%d", cardNumber);
     }
     
     // Count how many transactions are for this account
@@ -277,28 +288,45 @@ TransactionResult getMiniStatement(int cardNumber, const char* username) {
     }
     
     // Format the mini statement with the most recent transactions
-    int startIdx = (count <= 5) ? 0 : count - 5;
-    for (int i = startIdx; i < count; i++) {
-        char transID[15], accID[10], transType[20], amountStr[15], timestamp[30], status[10], remarks[50];
-        char formattedTrans[256];
+    strcat(miniStatement, "\n");
+    strcat(miniStatement, "Date       | Type        | Amount    | Status\n");
+    strcat(miniStatement, "-------------------------------------\n");
+    
+    // Start from the most recent transaction (if more than 5, show only the last 5)
+    int start = (count <= 5) ? 0 : count - 5;
+    for (int i = start; i < count; i++) {
+        char transactionID[10], accountIDFromLog[10], transactionType[20], statusStr[10], remarks[50];
+        float amount;
+        char timestamp[30];
         
-        if (sscanf(transactions[i % 5], "%s | %s | %s | %s | %s | %s | %[^\n]", 
-                   transID, accID, transType, amountStr, timestamp, status, remarks) >= 7) {
-            sprintf(formattedTrans, "%-10s | %-8s | %8s | %s\n", 
-                   transID, transType, amountStr, timestamp);
-            strcat(miniStatement, formattedTrans);
+        // Extract transaction details (simplified parsing)
+        if (sscanf(transactions[i % 5], "%s | %s | %s | %f | %s | %s | %s",
+                  transactionID, accountIDFromLog, transactionType, &amount,
+                  timestamp, statusStr, remarks) >= 7) {
+                  
+            // Format date to show only the date part
+            char dateStr[15];
+            strncpy(dateStr, timestamp, 10);
+            dateStr[10] = '\0';
+            
+            char formattedTransaction[100];
+            sprintf(formattedTransaction, "%s | %-10s | $%-8.2f | %s\n",
+                   dateStr, transactionType, amount, statusStr);
+            strcat(miniStatement, formattedTransaction);
         }
     }
     
-    sprintf(miniStatement + strlen(miniStatement), 
-           "\nCurrent Balance: $%.2f\n", balance);
+    strcat(miniStatement, "-------------------------------------\n");
+    sprintf(line, "Current Balance: $%.2f", balance);
+    strcat(miniStatement, line);
+    
+    fclose(file);
     
     result.success = 1;
     result.newBalance = balance;
     result.oldBalance = balance;
     strcpy(result.message, miniStatement);
     
-    fclose(file);
     logTransaction(cardNumber, TRANSACTION_MINI_STATEMENT, 0.0f, 1);
     
     // Log that mini-statement was requested
@@ -337,16 +365,16 @@ TransactionResult performMoneyTransfer(int senderCardNumber, int receiverCardNum
         return result;
     }
     
-    // Get sender's balance
+    // Fetch sender balance
     float senderBalance = fetchBalance(senderCardNumber);
     if (senderBalance < 0) {
         result.success = 0;
-        strcpy(result.message, "Error: Unable to fetch sender's account balance");
+        strcpy(result.message, "Error: Unable to fetch your account balance");
         logTransaction(senderCardNumber, TRANSACTION_MONEY_TRANSFER, amount, 0);
         return result;
     }
     
-    // Check if sufficient funds
+    // Check if sender has sufficient funds
     if (senderBalance < amount) {
         result.success = 0;
         sprintf(result.message, "Error: Insufficient funds. Current balance: $%.2f", senderBalance);
@@ -377,40 +405,38 @@ TransactionResult performMoneyTransfer(int senderCardNumber, int receiverCardNum
         writeTransactionDetails(username, "Money Transfer", detailsLog);
         
         logTransaction(senderCardNumber, TRANSACTION_MONEY_TRANSFER, amount, 1);
+        
+        // Also log for recipient
+        char recipientName[50] = "Unknown"; // Default if we can't find name
+        getCardHolderName(receiverCardNumber, recipientName, sizeof(recipientName));
+        
+        char recipientLog[100];
+        sprintf(recipientLog, "Received $%.2f from card %d (%s)", amount, senderCardNumber, username);
+        writeTransactionDetails(recipientName, "Money Received", recipientLog);
+        
         logTransaction(receiverCardNumber, TRANSACTION_MONEY_TRANSFER, amount, 1);
     } else {
         result.success = 0;
-        strcpy(result.message, "Error: Unable to complete the transfer");
+        strcpy(result.message, "Error: Failed to complete transfer");
         logTransaction(senderCardNumber, TRANSACTION_MONEY_TRANSFER, amount, 0);
     }
     
     return result;
 }
 
-// Function to write transaction log - renamed to avoid conflict with logger.h
-void writeTransactionDetails(const char* username, const char* transactionType, const char* details) {
-    // Get current timestamp
-    char timestamp[30];
-    getCurrentTimestamp(timestamp, sizeof(timestamp));
+// Alias for performMoneyTransfer to maintain backward compatibility
+TransactionResult performFundTransfer(int cardNumber, int targetCardNumber, float amount, const char* username) {
+    return performMoneyTransfer(cardNumber, targetCardNumber, amount, username);
+}
+
+// Function to log transaction details to the audit log
+void writeTransactionDetails(const char* username, const char* type, const char* details) {
+    char logEntry[300];
+    sprintf(logEntry, "USER: %s | ACTION: %s | DETAILS: %s", 
+            username, type, details);
     
-    // Format the log entry
-    char logEntry[512];
-    sprintf(logEntry, "[%s] User: %s | Type: %s | %s", 
-           timestamp, username, transactionType, details);
-    
-    // Write to transaction log file
-    char transactionsLogPath[200];
-    sprintf(transactionsLogPath, "%s/transactions.log", 
-            isTestingMode() ? TEST_DATA_DIR : PROD_DATA_DIR "/../logs");
-    
-    FILE* file = fopen(transactionsLogPath, "a");
-    if (file != NULL) {
-        fprintf(file, "%s\n", logEntry);
-        fclose(file);
-    } else {
-        // If transaction log file can't be opened, write to error log
-        writeErrorLog("Failed to open transaction log file");
-    }
+    // Write to the audit log
+    writeAuditLog("TRANSACTION", logEntry);
 }
 
 // Function to generate and send a receipt
@@ -434,72 +460,38 @@ void generateReceipt(int cardNumber, TransactionType type, float amount, float b
         case TRANSACTION_MINI_STATEMENT: 
             strcpy(typeStr, "Mini Statement"); 
             break;
+        case TRANSACTION_PIN_CHANGE: 
+            strcpy(typeStr, "PIN Change"); 
+            break;
         default: 
-            strcpy(typeStr, "Transaction"); 
+            strcpy(typeStr, "Unknown"); 
             break;
     }
     
-    // Get current timestamp
-    time_t now = time(NULL);
+    // Get date and time for receipt
     char timestamp[30];
-    strftime(timestamp, sizeof(timestamp), "%Y-%m-%d %H:%M:%S", localtime(&now));
+    getCurrentTimestamp(timestamp, sizeof(timestamp));
     
     // Get card holder's name
-    char holderName[100];
-    if (!getCardHolderName(cardNumber, holderName, sizeof(holderName))) {
-        strcpy(holderName, "Customer");
-    }
-    
-    // Format receipt
-    char receipt[1024];
-    sprintf(receipt, 
-            "============= TRANSACTION RECEIPT =============\n"
-            "Date/Time: %s\n"
-            "Card Number: **** **** **** %04d\n"
-            "Account Holder: %s\n"
-            "Transaction Type: %s\n",
-            timestamp,
-            cardNumber % 10000,  // Last 4 digits of the card number
-            holderName,
-            typeStr);
-    
-    if (type != TRANSACTION_BALANCE_CHECK && type != TRANSACTION_MINI_STATEMENT) {
-        sprintf(receipt + strlen(receipt), 
-                "Amount: $%.2f\n", amount);
-    }
-    
-    sprintf(receipt + strlen(receipt), 
-            "Current Balance: $%.2f\n"
-            "============================================\n"
-            "Thank you for banking with us!\n",
-            balance);
-    
-    // In a real implementation, we would send this receipt as an SMS to the phone number
-    // For this simulation, we'll just write it to a log file
-    printf("Receipt generated and ready to send to phone number: %s\n", phoneNumber);
-    
-    // Save receipt to file for testing purposes
-    char receiptFileName[100];
-    sprintf(receiptFileName, "%s/receipt_%d_%ld.txt", 
-           isTestingMode() ? TEST_DATA_DIR "/temp" : PROD_DATA_DIR "/temp", 
-           cardNumber, (long)time(NULL));
-    
-    FILE* file = fopen(receiptFileName, "w");
-    if (file != NULL) {
-        fprintf(file, "%s", receipt);
-        fclose(file);
-    } else {
-        writeErrorLog("Failed to create receipt file");
-    }
+    char holderName[50] = "Customer"; // Default if we can't get name
+    getCardHolderName(cardNumber, holderName, sizeof(holderName));
     
     // Log that receipt was generated
     char logMsg[100];
-    sprintf(logMsg, "Receipt generated for card %d - %s", cardNumber, typeStr);
+    sprintf(logMsg, "Receipt generated for %s (Card: %d, Phone: %s)", 
+           holderName, cardNumber, phoneNumber);
     writeAuditLog("RECEIPT", logMsg);
-}
-
-// Function to implement fund transfer (making it explicit)
-TransactionResult performFundTransfer(int cardNumber, int targetCardNumber, float amount, const char* username) {
-    // Delegate to the money transfer function
-    return performMoneyTransfer(cardNumber, targetCardNumber, amount, username);
+    
+    // In a real system, we'd send an SMS receipt to phoneNumber
+    // For our test implementation, we'll just print to console
+    printf("\n=========== RECEIPT ==========\n");
+    printf("Date: %s\n", timestamp);
+    printf("Card: **** **** **** %04d\n", cardNumber % 10000);
+    printf("Transaction: %s\n", typeStr);
+    if (amount > 0) {
+        printf("Amount: $%.2f\n", amount);
+    }
+    printf("Current Balance: $%.2f\n", balance);
+    printf("============================\n");
+    printf("Thank you for using our ATM!\n");
 }

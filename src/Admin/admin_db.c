@@ -1,31 +1,24 @@
 #include "admin_db.h"
 #include "../utils/logger.h"
+#include "../utils/hash_utils.h"
+#include "../common/paths.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
 
-// Use DATA_DIR if defined, otherwise fallback to relative paths
-#ifdef DATA_DIR
-    #define PATH_PREFIX DATA_DIR
-#else
-    #define PATH_PREFIX "../data"
-#endif
-
-// File paths with proper concatenation
-#define ADMIN_CRED_FILE PATH_PREFIX "/admin_credentials.txt"
-#define CREDENTIALS_FILE PATH_PREFIX "/credentials.txt"
-#define ACCOUNTING_FILE PATH_PREFIX "/accounting.txt"
-#define TEMP_CREDENTIALS_FILE PATH_PREFIX "/temp_credentials.txt"
-#define STATUS_FILE PATH_PREFIX "/status.txt"
+// File paths
+#define ADMIN_CREDENTIALS_FILE "data/admin_credentials.txt"
+#define TEMP_ADMIN_CRED_FILE "data/temp/temp_admin_credentials.txt"
+#define STATUS_FILE "data/status.txt"
 
 // ============================
 // Admin Credentials Operations
 // ============================
 
-// Load admin credentials from admin_credentials.txt file
+// Load admin credentials from file
 int loadAdminCredentials(char *adminId, char *adminPass) {
-    FILE *file = fopen(ADMIN_CRED_FILE, "r");
+    FILE *file = fopen(ADMIN_CREDENTIALS_FILE, "r");
     if (file == NULL) {
         writeErrorLog("Failed to open admin_credentials.txt while loading admin credentials");
         return 0;
@@ -71,10 +64,10 @@ int loadAdminCredentials(char *adminId, char *adminPass) {
     return 1; // Credentials loaded successfully
 }
 
-// Update admin credentials in admin_credentials.txt file
+// Update admin credentials
 int updateAdminCredentials(const char *newAdminId, const char *newAdminPass) {
     // First, read the existing file to maintain the table format
-    FILE *readFile = fopen(ADMIN_CRED_FILE, "r");
+    FILE *readFile = fopen(ADMIN_CREDENTIALS_FILE, "r");
     if (readFile == NULL) {
         writeErrorLog("Failed to open admin_credentials.txt for reading while updating credentials");
         return 0;
@@ -119,7 +112,7 @@ int updateAdminCredentials(const char *newAdminId, const char *newAdminPass) {
     fclose(readFile);
     
     // Now write back the file with the updated admin credentials
-    FILE *writeFile = fopen(ADMIN_CRED_FILE, "w");
+    FILE *writeFile = fopen(ADMIN_CREDENTIALS_FILE, "w");
     if (writeFile == NULL) {
         writeErrorLog("Failed to open admin_credentials.txt for writing while updating credentials");
         return 0;
@@ -138,6 +131,7 @@ int updateAdminCredentials(const char *newAdminId, const char *newAdminPass) {
             sscanf(entries[i], "| %s | %s | %s | %s | %s | %s |", 
                   adminId, username, passwordHash, role, lastLogin, status);
                   
+
             // Write the updated line with new password hash
             fprintf(writeFile, "| %-14s | %-13s | %-32s | %-12s | %-19s | %-7s |\n", 
                    newAdminId, username, newAdminPass, role, lastLogin, status);
@@ -162,33 +156,66 @@ int updateAdminCredentials(const char *newAdminId, const char *newAdminPass) {
 
 // Create a new ATM account with the given details
 int createNewAccount(const char *accountHolderName, int cardNumber, int pin) {
-    // Update credentials.txt
-    FILE *credFile = fopen(CREDENTIALS_FILE, "a");
-    if (credFile == NULL) {
-        writeErrorLog("Failed to open credentials.txt while creating new account");
+    // Generate PIN hash
+    char pinStr[10];
+    sprintf(pinStr, "%d", pin);
+    char *pinHash = sha256_hash(pinStr);
+    if (pinHash == NULL) {
+        writeErrorLog("Failed to generate PIN hash while creating new account");
         return 0;
     }
-
-    fprintf(credFile, "%-20s | %-11d | %-4d | Active\n", 
-            accountHolderName, cardNumber, pin);
-    fclose(credFile);
-
-    // Update accounting.txt with initial balance of 0
-    FILE *acctFile = fopen(ACCOUNTING_FILE, "a");
-    if (acctFile == NULL) {
-        writeErrorLog("Failed to open accounting.txt while creating new account");
+    
+    // Get next available IDs
+    int nextCustomerID = 10001; // Default start value
+    int nextAccountID = 10001; // Default start value
+    int nextCardID = 10001; // Default start value
+    
+    // Generate unique IDs
+    char customerID[10], accountID[10], cardID[10];
+    sprintf(customerID, "C%d", nextCustomerID);
+    sprintf(accountID, "A%d", nextAccountID);
+    sprintf(cardID, "D%d", nextCardID);
+    
+    // Generate expiry date (2 years from now)
+    time_t now = time(NULL);
+    struct tm* tm_now = localtime(&now);
+    tm_now->tm_year += 2;
+    char expiryDate[11];
+    strftime(expiryDate, sizeof(expiryDate), "%Y-%m-%d", tm_now);
+    
+    // Update customer.txt
+    FILE *customerFile = fopen(getCustomerFilePath(), "a");
+    if (customerFile == NULL) {
+        writeErrorLog("Failed to open customer.txt while creating new account");
+        free(pinHash);
         return 0;
     }
-
-    fprintf(acctFile, "%-11d | %.2f\n", cardNumber, 0.0);
-    fclose(acctFile);
-
+    
+    fprintf(customerFile, "%s | %s | %-20s | Regular | Active | 0.00\n", 
+            customerID, accountID, accountHolderName);
+    fclose(customerFile);
+    
+    // Update card.txt
+    FILE *cardFile = fopen(getCardFilePath(), "a");
+    if (cardFile == NULL) {
+        writeErrorLog("Failed to open card.txt while creating new account");
+        free(pinHash);
+        return 0;
+    }
+    
+    fprintf(cardFile, "%s  | %s     | %-16d | Debit     | %s  | Active  | %s\n", 
+            cardID, accountID, cardNumber, expiryDate, pinHash);
+    fclose(cardFile);
+    
+    // Clean up allocated memory
+    free(pinHash);
+    
     // Log the account creation
     char logMsg[100];
     sprintf(logMsg, "New account created for %s with card number %d", 
             accountHolderName, cardNumber);
     writeAuditLog("ADMIN", logMsg);
-
+    
     return 1; // Account created successfully
 }
 
@@ -199,7 +226,7 @@ int generateUniqueCardNumber() {
     
     do {
         // Generate a random 6-digit number
-        cardNumber = 100000 + rand() % 900000;
+        cardNumber = 100000 + (rand() % 900000);
     } while (!isCardNumberUnique(cardNumber));
     
     return cardNumber;
@@ -207,47 +234,55 @@ int generateUniqueCardNumber() {
 
 // Generate a random 4-digit PIN
 int generateRandomPin() {
-    return 1000 + rand() % 9000; // 4-digit PIN between 1000 and 9999
+    srand(time(NULL)); // Seed the random number generator
+    return 1000 + (rand() % 9000); // Generate a random 4-digit number
 }
 
 // Check if a card number is unique
 int isCardNumberUnique(int cardNumber) {
-    FILE *file = fopen(CREDENTIALS_FILE, "r");
+    FILE *file = fopen(getCardFilePath(), "r");
     if (file == NULL) {
-        writeErrorLog("Failed to open credentials.txt while checking card number uniqueness");
-        return 0; // File not found, assume not unique to be safe
+        writeErrorLog("Failed to open card.txt while checking card number uniqueness");
+        return 1; // Assume it's unique if we can't check
     }
-
-    char line[256];
-    // Skip the header lines
-    fgets(line, sizeof(line), file);
-    fgets(line, sizeof(line), file);
-
-    int storedCardNumber;
-    char storedUsername[50], storedStatus[10];
-    int storedPIN;
     
-    while (fscanf(file, "%49[^|] | %d | %d | %9s", 
-                 storedUsername, &storedCardNumber, &storedPIN, storedStatus) == 4) {
-        if (storedCardNumber == cardNumber) {
-            fclose(file);
-            return 0; // Card number already exists
+    char line[256];
+    bool found = false;
+    
+    // Skip header lines
+    fgets(line, sizeof(line), file);
+    fgets(line, sizeof(line), file);
+    
+    // Format: Card ID | Account ID | Card Number | Card Type | Expiry Date | Status | PIN Hash
+    char cardID[10], accountID[10], cardNumberStr[20], cardType[10], expiryDate[15], status[10], pinHash[65];
+    
+    while (fgets(line, sizeof(line), file) != NULL && !found) {
+        if (sscanf(line, "%s | %s | %s | %s | %s | %s | %s", 
+                   cardID, accountID, cardNumberStr, cardType, expiryDate, status, pinHash) >= 7) {
+            int storedCardNumber = atoi(cardNumberStr);
+            if (storedCardNumber == cardNumber) {
+                found = true;
+                break;
+            }
         }
     }
 
     fclose(file);
-    return 1; // Card number is unique
+    return !found; // Return true if card number is unique (not found)
 }
 
 // Update card details (PIN and/or status)
 int updateCardDetails(int cardNumber, int newPIN, const char *newStatus) {
-    FILE *file = fopen(CREDENTIALS_FILE, "r");
+    FILE *file = fopen(getCardFilePath(), "r");
     if (file == NULL) {
-        writeErrorLog("Failed to open credentials.txt while updating card details");
+        writeErrorLog("Failed to open card.txt while updating card details");
         return 0;
     }
 
-    FILE *tempFile = fopen(TEMP_CREDENTIALS_FILE, "w");
+    char tempFileName[100];
+    sprintf(tempFileName, "%s/temp/temp_card.txt", isTestingMode() ? TEST_DATA_DIR : PROD_DATA_DIR);
+    
+    FILE *tempFile = fopen(tempFileName, "w");
     if (tempFile == NULL) {
         fclose(file);
         writeErrorLog("Failed to create temporary file while updating card details");
@@ -255,9 +290,7 @@ int updateCardDetails(int cardNumber, int newPIN, const char *newStatus) {
     }
 
     char line[256];
-    int storedCardNumber, storedPIN;
-    char storedUsername[50], storedStatus[10];
-    int found = 0;
+    bool found = false;
 
     // Copy header lines
     if (fgets(line, sizeof(line), file))
@@ -265,34 +298,57 @@ int updateCardDetails(int cardNumber, int newPIN, const char *newStatus) {
     if (fgets(line, sizeof(line), file))
         fprintf(tempFile, "%s", line);
 
-    // Process each account line
-    while (fscanf(file, "%49[^|] | %d | %d | %9s", 
-                 storedUsername, &storedCardNumber, &storedPIN, storedStatus) == 4) {
-        if (storedCardNumber == cardNumber) {
-            found = 1;
-            // Update PIN if specified (newPIN != -1)
-            int finalPIN = (newPIN != -1) ? newPIN : storedPIN;
-            // Update status if specified
-            const char *finalStatus = (newStatus != NULL) ? newStatus : storedStatus;
-            
-            fprintf(tempFile, "%-20s | %-11d | %-4d | %-9s\n", 
-                   storedUsername, storedCardNumber, finalPIN, finalStatus);
-            
-            // Log the update
-            char logMsg[200];
-            if (newPIN != -1 && newStatus != NULL) {
-                sprintf(logMsg, "Updated PIN and status to '%s' for card %d", 
-                        finalStatus, cardNumber);
-            } else if (newPIN != -1) {
-                sprintf(logMsg, "Updated PIN for card %d", cardNumber);
+    // Process each card line
+    char cardID[10], accountID[10], cardNumberStr[20], cardType[10], expiryDate[15], status[10], storedPinHash[65];
+    
+    while (fgets(line, sizeof(line), file) != NULL) {
+        char lineCopy[256];
+        strcpy(lineCopy, line);
+        
+        if (sscanf(lineCopy, "%s | %s | %s | %s | %s | %s | %s", 
+                   cardID, accountID, cardNumberStr, cardType, expiryDate, status, storedPinHash) >= 7) {
+            int storedCardNumber = atoi(cardNumberStr);
+            if (storedCardNumber == cardNumber) {
+                found = true;
+                // Generate new PIN hash if needed
+                char* finalPinHash = storedPinHash;
+                char newPinHash[65];
+                bool freePinHash = false;
+                
+                if (newPIN != -1) {
+                    char pinStr[10];
+                    sprintf(pinStr, "%d", newPIN);
+                    char* tempPinHash = sha256_hash(pinStr);
+                    if (tempPinHash != NULL) {
+                        strcpy(newPinHash, tempPinHash);
+                        finalPinHash = newPinHash;
+                        free(tempPinHash);
+                    }
+                }
+                
+                // Update status if specified
+                const char* finalStatus = (newStatus != NULL) ? newStatus : status;
+                
+                fprintf(tempFile, "%s | %s | %s | %s | %s | %-7s | %s\n", 
+                        cardID, accountID, cardNumberStr, cardType, expiryDate, finalStatus, finalPinHash);
+                
+                // Log the update
+                char logMsg[200];
+                if (newPIN != -1 && newStatus != NULL) {
+                    sprintf(logMsg, "Updated PIN and status to '%s' for card %d", 
+                            finalStatus, cardNumber);
+                } else if (newPIN != -1) {
+                    sprintf(logMsg, "Updated PIN for card %d", cardNumber);
+                } else {
+                    sprintf(logMsg, "Updated status to '%s' for card %d", 
+                            finalStatus, cardNumber);
+                }
+                writeAuditLog("ADMIN", logMsg);
             } else {
-                sprintf(logMsg, "Updated status to '%s' for card %d", 
-                        finalStatus, cardNumber);
+                fprintf(tempFile, "%s", line);
             }
-            writeAuditLog("ADMIN", logMsg);
         } else {
-            fprintf(tempFile, "%-20s | %-11d | %-4d | %-9s\n", 
-                   storedUsername, storedCardNumber, storedPIN, storedStatus);
+            fprintf(tempFile, "%s", line);
         }
     }
 
@@ -301,14 +357,14 @@ int updateCardDetails(int cardNumber, int newPIN, const char *newStatus) {
 
     // Replace original file with updated file
     if (!found) {
-        remove(TEMP_CREDENTIALS_FILE);
+        remove(tempFileName);
         writeErrorLog("Card not found while updating card details");
         return 0;
     }
 
-    if (remove(CREDENTIALS_FILE) != 0 || 
-        rename(TEMP_CREDENTIALS_FILE, CREDENTIALS_FILE) != 0) {
-        writeErrorLog("Failed to replace credentials.txt with updated file");
+    if (remove(getCardFilePath()) != 0 || 
+        rename(tempFileName, getCardFilePath()) != 0) {
+        writeErrorLog("Failed to replace card.txt with updated file");
         return 0;
     }
 
