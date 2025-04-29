@@ -261,4 +261,4 @@ The system supports extensive configuration options managed through the admin in
 
 Thank you for choosing our **ATM Management System**! This project demonstrates comprehensive banking operations with robust security features. We welcome feedback and contributions to enhance this system further.
 
-*Developed with ❤️ *
+*Developed with ❤️ in India*
