@@ -27,6 +27,18 @@ typedef struct {
     ConfigValueType type;
 } ConfigValue;
 
+// System configuration for admin interface
+typedef struct {
+    char name[64];
+    char value[256];
+    char description[512];
+    int is_editable;
+} SystemConfig;
+
+// Global access to system configurations
+extern SystemConfig g_systemConfigs[50];
+extern int g_configCount;
+
 /**
  * @brief Initialize the configuration system
  * @return 1 on success, 0 on failure
@@ -189,5 +201,30 @@ int getAllConfigKeys(char** keys, int max_keys);
  * @brief Clean up configuration resources
  */
 void config_cleanup(void);
+
+/**
+ * @brief Initialize system configurations for admin interface
+ * @return 1 on success, 0 on failure
+ */
+int initializeConfigs(void);
+
+/**
+ * @brief Save system configurations
+ * @return 1 on success, 0 on failure
+ */
+int saveConfigs(void);
+
+/**
+ * @brief Update a specific configuration
+ * @param name Configuration name
+ * @param value New configuration value
+ * @return 1 on success, 0 on failure
+ */
+int updateConfig(const char* name, const char* value);
+
+/**
+ * @brief Free resources used by system configurations
+ */
+void freeConfigs(void);
 
 #endif /* CONFIG_MANAGER_H */

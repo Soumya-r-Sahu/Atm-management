@@ -343,42 +343,40 @@ int updateAtmStatus(const char* atmId, const char* newStatus) {
 
 // Admin authentication function implementation
 int authenticateAdmin(const char* adminId, const char* adminPass) {
-    // Simple authentication logic - in a real app, this would check against encrypted credentials
-    // For demonstration, we'll accept hardcoded credentials or check from a file
+    // Check for super admin credentials
     if (strcmp(adminId, "admin") == 0 && strcmp(adminPass, "admin123") == 0) {
-        return 1; // Success
+        return 1; // Success for super admin
     }
-    
+
     // Check against admin_credentials.txt file
-    FILE* file = fopen("data/admin_credentials.txt", "r");
+    FILE* file = fopen("../data/admin_credentials.txt", "r");
     if (file == NULL) {
         writeErrorLog("Failed to open admin credentials file");
         return 0;
     }
-    
+
     char line[256];
     int found = 0;
-    
+
     // Skip header if present
     if (fgets(line, sizeof(line), file) != NULL && strstr(line, "Admin ID") != NULL) {
         // This was a header line, continue to next line
     }
-    
+
     // Look for matching admin ID and password
     while (fgets(line, sizeof(line), file) != NULL) {
-        char storedId[50], storedPassHash[100], role[20];
-        if (sscanf(line, "%s | %s | %s", storedId, storedPassHash, role) >= 2) {
+        char storedId[50], storedPass[50], role[20];
+        if (sscanf(line, "%49s | %49s | %19s", storedId, storedPass, role) >= 2) {
             if (strcmp(storedId, adminId) == 0) {
-                // In real app, we'd hash the password and compare hashes
-                // For this implementation, we'll do a direct comparison
-                if (strcmp(storedPassHash, adminPass) == 0) {
+                // Compare passwords directly (in real-world, use hashed passwords)
+                if (strcmp(storedPass, adminPass) == 0) {
                     found = 1;
                 }
                 break;
             }
         }
     }
-    
+
     fclose(file);
     return found;
 }

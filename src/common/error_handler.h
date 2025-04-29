@@ -19,6 +19,7 @@ typedef enum {
     ERR_SYSTEM = 11,              // System error
     ERR_NETWORK = 12,             // Network error
     ERR_TIMEOUT = 13,             // Operation timeout
+    ERR_LIMIT_EXCEEDED = 14,      // Limit exceeded (e.g., max entries)
     ERR_UNKNOWN = 99              // Unknown/unhandled error
 } ErrorCode;
 

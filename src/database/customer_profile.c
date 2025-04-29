@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <ctype.h>  // Added for isspace()
 #include <time.h>
 
 // Helper function to parse a time string into a time_t value
@@ -42,24 +43,30 @@ static void formatDateTimeString(time_t timestamp, char* buffer, size_t bufferSi
 }
 
 // Helper function to trim whitespace
-static char* trim(char* str) {
-    if (!str) return NULL;
+static char* trim(const char* str) {
+    static char buffer[256];
+    if (str == NULL) return NULL;
     
-    // Trim leading spaces
-    while (*str != '\0' && isspace(*str)) {
-        str++;
+    strncpy(buffer, str, sizeof(buffer) - 1);
+    buffer[sizeof(buffer) - 1] = '\0';
+    
+    char* result = buffer;
+    
+    // Remove leading spaces
+    while (*result != '\0' && isspace(*result)) {
+        result++;
     }
     
-    if (*str == '\0') return str;  // String contains only spaces
-    
-    // Trim trailing spaces
-    char* end = str + strlen(str) - 1;
-    while (end > str && isspace(*end)) {
-        *end = '\0';
-        end--;
+    // Remove trailing spaces
+    if (*result != '\0') {
+        char* end = result + strlen(result) - 1;
+        while (end > result && isspace(*end)) {
+            *end = '\0';
+            end--;
+        }
     }
     
-    return str;
+    return result;
 }
 
 // Helper function to parse customer status string
@@ -371,7 +378,10 @@ bool loadCardByCardNumber(int cardNumber, Card* card) {
 
 // Get recent transactions for an account
 int getRecentTransactions(const char* accountId, Transaction* transactions, int maxTransactions) {
-    FILE* file = fopen(TRANSACTIONS_LOG_FILE, "r");
+    const char* transactionFilePath = isTestingMode() ? 
+        TEST_TRANSACTIONS_LOG_FILE : PROD_TRANSACTIONS_LOG_FILE;
+    
+    FILE* file = fopen(transactionFilePath, "r");
     if (file == NULL) {
         writeErrorLog("Failed to open transaction file");
         return 0;

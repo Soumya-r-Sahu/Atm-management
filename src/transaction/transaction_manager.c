@@ -30,6 +30,32 @@ static void getCurrentTimestamp(char *buffer, size_t size) {
     strftime(buffer, size, "%Y-%m-%d %H:%M:%S", t);
 }
 
+// Write detailed transaction information to log
+void writeTransactionDetails(const char* username, const char* transactionType, const char* details) {
+    time_t now = time(NULL);
+    struct tm* tm_now = localtime(&now);
+    char timestamp[30];
+    strftime(timestamp, sizeof(timestamp), "%Y-%m-%d %H:%M:%S", tm_now);
+    
+    // Create a log message with all details
+    char logMessage[512];
+    snprintf(logMessage, sizeof(logMessage), "[%s] User: %s, Type: %s, Details: %s", 
+             timestamp, username, transactionType, details);
+    
+    // Log to transaction file
+    const char* transactionPath = isTestingMode() ? 
+        TEST_TRANSACTIONS_LOG_FILE : PROD_TRANSACTIONS_LOG_FILE;
+    
+    FILE* file = fopen(transactionPath, "a");
+    if (file != NULL) {
+        fprintf(file, "%s\n", logMessage);
+        fclose(file);
+    } else {
+        // If transaction log cannot be opened, fall back to error log
+        writeErrorLog("Failed to write transaction details");
+    }
+}
+
 // Function to check account balance
 TransactionResult checkAccountBalance(int cardNumber, const char* username) {
     TransactionResult result = {0};
@@ -461,6 +487,61 @@ TransactionResult performMoneyTransfer(int senderCardNumber, int receiverCardNum
     logTransaction(receiverCardNumber, TRANSACTION_MONEY_TRANSFER, amount, 1);
     
     return result;
+}
+
+// Generate transaction receipt
+void generateReceipt(int cardNumber, TransactionType type, float amount, float balance, const char* phoneNumber) {
+    time_t now = time(NULL);
+    struct tm* tm_now = localtime(&now);
+    char timestamp[30];
+    strftime(timestamp, sizeof(timestamp), "%Y-%m-%d %H:%M:%S", tm_now);
+    
+    // Get a unique receipt number
+    int receiptNumber = (int)time(NULL) % 100000 + cardNumber % 1000;
+    
+    // Convert transaction type to string
+    const char* typeStr;
+    switch (type) {
+        case TRANSACTION_BALANCE_CHECK: typeStr = "Balance Check"; break;
+        case TRANSACTION_DEPOSIT: typeStr = "Deposit"; break;
+        case TRANSACTION_WITHDRAWAL: typeStr = "Withdrawal"; break;
+        case TRANSACTION_MONEY_TRANSFER: typeStr = "Money Transfer"; break;
+        case TRANSACTION_MINI_STATEMENT: typeStr = "Mini Statement"; break;
+        case TRANSACTION_PIN_CHANGE: typeStr = "PIN Change"; break;
+        default: typeStr = "Unknown Transaction"; break;
+    }
+    
+    printf("\n");
+    printf("╔══════════════════════════════════════════╗\n");
+    printf("║             ATM RECEIPT                  ║\n");
+    printf("╠══════════════════════════════════════════╣\n");
+    printf("║ Receipt #: %d                       ║\n", receiptNumber);
+    printf("║ Date: %s              ║\n", timestamp);
+    printf("║ Card: %d                          ║\n", cardNumber);
+    printf("║ Transaction: %-28s ║\n", typeStr);
+    
+    if (type != TRANSACTION_BALANCE_CHECK && type != TRANSACTION_MINI_STATEMENT && type != TRANSACTION_PIN_CHANGE) {
+        printf("║ Amount: $%-30.2f ║\n", amount);
+    }
+    
+    printf("║ Balance: $%-29.2f ║\n", balance);
+    printf("╠══════════════════════════════════════════╣\n");
+    printf("║ Thank you for using our ATM services     ║\n");
+    
+    // Display customer service contact info
+    if (strlen(phoneNumber) > 0 && strcmp(phoneNumber, "0000000000") != 0) {
+        printf("║ For inquiries: %-24s ║\n", phoneNumber);
+    } else {
+        printf("║ For inquiries: 1-800-BANK-HELP        ║\n");
+    }
+    
+    printf("╚══════════════════════════════════════════╝\n\n");
+    
+    // Log the receipt generation
+    char logMsg[100];
+    sprintf(logMsg, "Receipt generated for card %d, transaction: %s", 
+            cardNumber, typeStr);
+    writeAuditLog("RECEIPT", logMsg);
 }
 
 // Helper functions for transaction atomicity

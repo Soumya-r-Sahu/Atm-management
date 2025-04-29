@@ -7,6 +7,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <termios.h>
+#include <unistd.h>
 
 #define MAX_PIN_ATTEMPTS 3
 #define TEMP_PIN_ATTEMPTS_FILE "data/temp/pin_attempts.txt"
@@ -17,9 +19,9 @@
  */
 static const char* getCredentialsPath(int isTestMode) {
     if (isTestMode) {
-        return TEST_CREDENTIALS_FILE;
+        return TEST_CARD_FILE;
     } else {
-        return CREDENTIALS_FILE;
+        return PROD_CARD_FILE;
     }
 }
 
@@ -440,3 +442,17 @@ int isValidPINFormat(int pin) {
     // PIN should be 4-6 digits (between 1000 and 999999)
     return (pin >= 1000 && pin <= 999999);
 }
+
+/**
+ * USING IMPLEMENTATION FROM utils.c - Declaration commented out to avoid duplicate symbols
+ *
+ * Securely input a PIN without displaying it on screen
+ * This implementation masks the input with asterisks for improved user experience
+ * while maintaining security
+ */
+/*
+int secure_pin_entry(char* pin, size_t size) {
+    // Implementation replaced with call to common utility function
+    // See utils.c for actual implementation
+}
+*/

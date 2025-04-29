@@ -7,19 +7,20 @@
 #include <string.h>
 #include <time.h>
 #include <limits.h>
+#include <stdbool.h>
 
 // ============================
 // Admin Credentials Operations
 // ============================
 
-// Get admin credentials file path based on testing mode
-static const char* getAdminCredentialsFilePath() {
-    return isTestingMode() ? TEST_ADMIN_CRED_FILE : PROD_ADMIN_CRED_FILE;
+// Use the proper constants from paths.h
+static const char* getLocalAdminCredentialsFilePath() {
+    return isTestingMode() ? TEST_ADMIN_CREDENTIALS_FILE : PROD_ADMIN_CREDENTIALS_FILE;
 }
 
-// Get status file path based on testing mode
-static const char* getStatusFilePath() {
-    return isTestingMode() ? TEST_STATUS_FILE : PROD_STATUS_FILE;
+// Use the implementation from paths.h instead of redefining
+const char* getStatusFilePath() {
+    return isTestingMode() ? TEST_DATA_DIR "/status.txt" : PROD_DATA_DIR "/status.txt";
 }
 
 // Load admin credentials from file
@@ -29,7 +30,7 @@ int loadAdminCredentials(char *adminId, char *adminPass) {
         return 0;
     }
     
-    const char* filePath = getAdminCredentialsFilePath();
+    const char* filePath = getLocalAdminCredentialsFilePath();
     FILE *file = fopen(filePath, "r");
     if (file == NULL) {
         char errorMsg[256];
@@ -87,7 +88,7 @@ int updateAdminCredentials(const char *newAdminId, const char *newAdminPass) {
     }
     
     // First, read the existing file to maintain the table format
-    const char* filePath = getAdminCredentialsFilePath();
+    const char* filePath = getLocalAdminCredentialsFilePath();
     FILE *readFile = fopen(filePath, "r");
     if (readFile == NULL) {
         char errorMsg[256];

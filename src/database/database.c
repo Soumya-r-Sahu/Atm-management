@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <limits.h> // Added for INT_MAX
 
 // Helper function to get current date as a string (YYYY-MM-DD)
 static void getCurrentDate(char *buffer, size_t size) {
@@ -526,20 +527,22 @@ bool updateBalance(int cardNumber, float newBalance) {
     bool updated = false;
     
     // Copy header lines
-    if (fgets(line, sizeof(line), customerFile) == NULL || fgets(line, sizeof(line), customerFile) == NULL) {
-        writeErrorLog("Customer file format error: missing header lines");
+    if (fgets(line, sizeof(line), customerFile) == NULL) {
+        writeErrorLog("Customer file format error: missing header line 1");
         fclose(customerFile);
         fclose(tempFile);
         remove(tempFileName);
         return false;
     }
-    
     fputs(line, tempFile);
     
-    // Reset the file pointer to read the second header line again
-    fseek(customerFile, 0, SEEK_SET);
-    fgets(line, sizeof(line), customerFile); // Skip first line
-    fgets(line, sizeof(line), customerFile); // Read second line
+    if (fgets(line, sizeof(line), customerFile) == NULL) {
+        writeErrorLog("Customer file format error: missing header line 2");
+        fclose(customerFile);
+        fclose(tempFile);
+        remove(tempFileName);
+        return false;
+    }
     fputs(line, tempFile);
     
     char customerID[20] = {0}, accIDFromFile[20] = {0}, holderName[100] = {0};
@@ -557,22 +560,52 @@ bool updateBalance(int cardNumber, float newBalance) {
         if (sscanf(line, "%19s | %19s | %99[^|] | %29s | %29s | %29s", 
                    customerID, accIDFromFile, holderName, type, accountStatus, balanceStr) >= 6) {
             if (strcmp(accIDFromFile, accountID) == 0) {
-                balance = atof(balanceStr);
-                found = true;
-                break;
+                // Update balance for this account
+                fprintf(tempFile, "%s | %s | %s | %s | %s | %.2f\n", 
+                        customerID, accIDFromFile, holderName, type, accountStatus, newBalance);
+                updated = true;
+            } else {
+                // Copy line as is for other accounts
+                fputs(line, tempFile);
             }
+        } else {
+            // Copy line as is if it doesn't match the expected format
+            fputs(line, tempFile);
         }
     }
     
     fclose(customerFile);
+    fclose(tempFile);
     
-    if (!found) {
+    if (!updated) {
         char errorMsg[100];
         sprintf(errorMsg, "Account ID %s not found in customer database", accountID);
         writeErrorLog(errorMsg);
+        remove(tempFileName);
+        return false;
     }
     
-    return balance;
+    // Replace original file with updated one
+    if (remove(customerFilePath) != 0) {
+        char errorMsg[100];
+        sprintf(errorMsg, "Failed to remove original customer file during balance update");
+        writeErrorLog(errorMsg);
+        remove(tempFileName);
+        return false;
+    }
+    
+    if (rename(tempFileName, customerFilePath) != 0) {
+        char errorMsg[100];
+        sprintf(errorMsg, "Failed to rename temporary customer file during balance update");
+        writeErrorLog(errorMsg);
+        return false;
+    }
+    
+    char logMsg[100];
+    sprintf(logMsg, "Balance updated to %.2f for card %d (account %s)", newBalance, cardNumber, accountID);
+    writeAuditLog("ACCOUNT", logMsg);
+    
+    return true;
 }
 
 // Log a transaction to the transactions log

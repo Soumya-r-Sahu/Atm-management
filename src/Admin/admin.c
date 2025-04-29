@@ -112,14 +112,14 @@ int admin_main() {
                 viewAuditLogs();
                 break;
                 
-            case 10: // Exit
+            case 10: // System Configuration (changed from 11 to 10)
+                manageSystemConfigurations();
+                break;
+                
+            case 11: // Exit (changed from 10 to 11)
                 isLoggedIn = 0;
                 writeAuditLog("ADMIN", "Admin logout");
                 printf("\nLogging out of admin panel...\n");
-                break;
-
-            case 11: // System Configuration
-                manageSystemConfigurations();
                 break;
                 
             default:
@@ -127,7 +127,7 @@ int admin_main() {
         }
         
         if (isLoggedIn && choice != 2 && choice != 3 && choice != 4 && choice != 5 
-            && choice != 6 && choice != 7 && choice != 8 && choice != 9) {
+            && choice != 6 && choice != 7 && choice != 8 && choice != 9 && choice != 10) {
             printf("\nPress Enter to continue...");
             getchar();
         }

@@ -6,6 +6,7 @@
 #include "../utils/hash_utils.h"
 #include "../utils/language_support.h"
 #include "../config/config_manager.h"  // Added for getConfigValueInt
+#include "../common/paths.h"  // Added for CONFIG_SESSION_TIMEOUT_SECONDS constant
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>

@@ -1,6 +1,8 @@
 #ifndef PIN_VALIDATION_H
 #define PIN_VALIDATION_H
 
+#include <stddef.h> // Added for size_t type
+
 /**
  * Validates a PIN against the stored hash
  * 
@@ -89,5 +91,14 @@ int recordFailedPINAttempt(int cardNumber);
  * @return 1 if format is valid, 0 otherwise
  */
 int isValidPINFormat(int pin);
+
+/**
+ * Securely input a PIN without displaying it on screen
+ * 
+ * @param pin Buffer to store the entered PIN
+ * @param size Size of the buffer
+ * @return 1 if input was successful, 0 otherwise
+ */
+int secure_pin_entry(char* pin, size_t size);
 
 #endif /* PIN_VALIDATION_H */

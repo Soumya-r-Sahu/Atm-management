@@ -31,6 +31,10 @@ static int callback_count = 0;
 static char changed_keys[MAX_CONFIG_ENTRIES][64];
 static int changed_count = 0;
 
+// System Configuration Implementation
+SystemConfig g_systemConfigs[50];
+int g_configCount = 0;
+
 // Initialize the configuration system
 int config_init(void) {
     config_count = 0;
@@ -170,6 +174,167 @@ int loadConfig(const char* path) {
     writeAuditLog("CONFIG", log_msg);
     
     return 1;
+}
+
+// Additional helper functions and implementations for admin interface
+
+// Initialize system configurations for admin interface
+int initializeConfigs() {
+    g_configCount = 0;
+
+    // Default system configurations
+    const char* config_file = "data/system_config.txt";
+    
+    // Try to load from file first
+    FILE* file = fopen(config_file, "r");
+    if (file) {
+        char line[512];
+        
+        // Skip header lines if present
+        if (fgets(line, sizeof(line), file) != NULL && strstr(line, "Name") != NULL) {
+            // Skip header line
+        }
+        
+        // Read configurations
+        while (fgets(line, sizeof(line), file) && g_configCount < 50) {
+            char name[64], value[256], description[512];
+            int is_editable = 1;
+            
+            // Try to parse the line
+            // Format: Name | Value | Description | Editable
+            if (sscanf(line, "%63[^|] | %255[^|] | %511[^|] | %d", 
+                      name, value, description, &is_editable) >= 3) {
+                
+                // Trim whitespace
+                char* trimmed_name = trim_whitespace(name);
+                char* trimmed_value = trim_whitespace(value);
+                char* trimmed_desc = trim_whitespace(description);
+                
+                // Add to config array
+                strncpy(g_systemConfigs[g_configCount].name, trimmed_name, 63);
+                g_systemConfigs[g_configCount].name[63] = '\0';
+                
+                strncpy(g_systemConfigs[g_configCount].value, trimmed_value, 255);
+                g_systemConfigs[g_configCount].value[255] = '\0';
+                
+                strncpy(g_systemConfigs[g_configCount].description, trimmed_desc, 511);
+                g_systemConfigs[g_configCount].description[511] = '\0';
+                
+                g_systemConfigs[g_configCount].is_editable = is_editable;
+                
+                g_configCount++;
+            }
+        }
+        
+        fclose(file);
+        
+        if (g_configCount > 0) {
+            char msg[100];
+            snprintf(msg, sizeof(msg), "Loaded %d system configurations from file", g_configCount);
+            writeAuditLog("CONFIG", msg);
+            return 1;
+        }
+    }
+    
+    // If file doesn't exist or is empty, create default configurations
+    
+    // Create default configurations
+    strncpy(g_systemConfigs[g_configCount].name, "max_withdrawal_limit", 63);
+    strncpy(g_systemConfigs[g_configCount].value, "10000", 255);
+    strncpy(g_systemConfigs[g_configCount].description, "Maximum amount that can be withdrawn in a single transaction", 511);
+    g_systemConfigs[g_configCount].is_editable = 1;
+    g_configCount++;
+    
+    strncpy(g_systemConfigs[g_configCount].name, "min_withdrawal_limit", 63);
+    strncpy(g_systemConfigs[g_configCount].value, "100", 255);
+    strncpy(g_systemConfigs[g_configCount].description, "Minimum amount that can be withdrawn in a single transaction", 511);
+    g_systemConfigs[g_configCount].is_editable = 1;
+    g_configCount++;
+    
+    strncpy(g_systemConfigs[g_configCount].name, "daily_withdrawal_limit", 63);
+    strncpy(g_systemConfigs[g_configCount].value, "25000", 255);
+    strncpy(g_systemConfigs[g_configCount].description, "Maximum amount that can be withdrawn in a day", 511);
+    g_systemConfigs[g_configCount].is_editable = 1;
+    g_configCount++;
+    
+    strncpy(g_systemConfigs[g_configCount].name, "session_timeout", 63);
+    strncpy(g_systemConfigs[g_configCount].value, "120", 255);
+    strncpy(g_systemConfigs[g_configCount].description, "Session timeout in seconds", 511);
+    g_systemConfigs[g_configCount].is_editable = 1;
+    g_configCount++;
+    
+    strncpy(g_systemConfigs[g_configCount].name, "max_pin_attempts", 63);
+    strncpy(g_systemConfigs[g_configCount].value, "3", 255);
+    strncpy(g_systemConfigs[g_configCount].description, "Maximum number of incorrect PIN attempts before card is blocked", 511);
+    g_systemConfigs[g_configCount].is_editable = 1;
+    g_configCount++;
+
+    strncpy(g_systemConfigs[g_configCount].name, "default_language", 63);
+    strncpy(g_systemConfigs[g_configCount].value, "English", 255);
+    strncpy(g_systemConfigs[g_configCount].description, "Default language for ATM interface", 511);
+    g_systemConfigs[g_configCount].is_editable = 1;
+    g_configCount++;
+    
+    // Save the default configurations to file
+    saveConfigs();
+    
+    writeAuditLog("CONFIG", "Created default system configurations");
+    return 1;
+}
+
+// Save system configurations to file
+int saveConfigs() {
+    const char* config_file = "data/system_config.txt";
+    FILE* file = fopen(config_file, "w");
+    if (!file) {
+        writeErrorLog("Failed to open system config file for writing");
+        return 0;
+    }
+    
+    // Write header
+    fprintf(file, "Name | Value | Description | Editable\n");
+    
+    // Write configurations
+    for (int i = 0; i < g_configCount; i++) {
+        fprintf(file, "%s | %s | %s | %d\n",
+               g_systemConfigs[i].name,
+               g_systemConfigs[i].value,
+               g_systemConfigs[i].description,
+               g_systemConfigs[i].is_editable);
+    }
+    
+    fclose(file);
+    writeAuditLog("CONFIG", "Saved system configurations to file");
+    return 1;
+}
+
+// Update a specific configuration
+int updateConfig(const char* name, const char* value) {
+    for (int i = 0; i < g_configCount; i++) {
+        if (strcmp(g_systemConfigs[i].name, name) == 0) {
+            if (g_systemConfigs[i].is_editable) {
+                strncpy(g_systemConfigs[i].value, value, 255);
+                g_systemConfigs[i].value[255] = '\0';
+                
+                char msg[200];
+                snprintf(msg, sizeof(msg), "Updated config '%s' to '%s'", name, value);
+                writeAuditLog("CONFIG", msg);
+                return 1;
+            } else {
+                writeErrorLog("Attempted to update non-editable configuration");
+                return 0;
+            }
+        }
+    }
+    
+    writeErrorLog("Attempted to update non-existent configuration");
+    return 0;
+}
+
+// Free resources used by system configurations
+void freeConfigs() {
+    // Nothing to free since we're using static arrays
+    g_configCount = 0;
 }
 
 // Save current configuration to a file

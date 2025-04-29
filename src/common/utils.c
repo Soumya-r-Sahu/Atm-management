@@ -1,7 +1,9 @@
 #include "utils.h"
 #include <stdio.h>
+#include <stdlib.h>  // For rand() function
 #include <string.h>
-#include <conio.h>  // For _getch() on Windows
+#include <termios.h>  // For terminal control on Linux
+#include <unistd.h>   // For POSIX read
 
 // Validate if a string contains only allowed characters
 int is_valid_string(const char *str) {
@@ -26,13 +28,37 @@ int is_valid_string(const char *str) {
     return 1;
 }
 
+// Linux implementation of getch() to read single character without echo
+static char linux_getch() {
+    struct termios oldattr, newattr;
+    char ch;
+    
+    // Save current terminal settings
+    tcgetattr(STDIN_FILENO, &oldattr);
+    newattr = oldattr;
+    
+    // Disable canonical mode and echo
+    newattr.c_lflag &= ~(ICANON | ECHO);
+    
+    // Apply new settings
+    tcsetattr(STDIN_FILENO, TCSANOW, &newattr);
+    
+    // Read a single character
+    read(STDIN_FILENO, &ch, 1);
+    
+    // Restore old settings
+    tcsetattr(STDIN_FILENO, TCSANOW, &oldattr);
+    
+    return ch;
+}
+
 // Securely read a PIN without displaying it on screen
 void secure_pin_entry(char *pin, int max_length) {
     int i = 0;
     char ch;
     
-    while ((ch = _getch()) != '\r' && i < max_length - 1) {
-        if (ch == '\b') {  // Handle backspace
+    while ((ch = linux_getch()) != '\n' && ch != '\r' && i < max_length - 1) {
+        if (ch == 127 || ch == '\b') {  // Handle backspace (127 is DEL on Linux)
             if (i > 0) {
                 i--;
                 printf("\b \b");  // Erase character on screen

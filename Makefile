@@ -28,7 +28,8 @@ SRCS = src/main/main.c \
        src/utils/file_utils.c \
        src/utils/hash_utils.c \
        src/utils/string_utils.c \
-       src/common/utils.c
+       src/common/utils.c \
+       src/card_account_management.c
 
 # Object files
 OBJS = $(SRCS:.c=.o)
@@ -41,7 +42,7 @@ all: $(EXEC)
 
 # Build the unified executable
 $(EXEC): $(OBJS)
-	$(CC) $(CFLAGS) -o $@ $(OBJS) -lm
+	$(CC) $(CFLAGS) -o $@ $(OBJS) -lm -lc
 
 # Clean up
 clean:

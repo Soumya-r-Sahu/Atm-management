@@ -5,6 +5,9 @@
 #include <stdlib.h>
 #include <string.h>
 
+// Global error message buffer
+static char g_error_message[256] = {0};
+
 // Memory allocation tracking structure
 typedef struct MemoryAlloc {
     void* ptr;               // Pointer to allocated memory
@@ -27,73 +30,66 @@ static size_t current_memory_usage = 0;
 // Thread safety would require mutex/lock here in a multi-threaded environment
 
 // Safe memory allocation with error handling
-void* safe_malloc(size_t size, const char* description) {
-    if (size == 0) {
-        SET_ERROR(ERR_INVALID_INPUT, "Attempted to allocate zero bytes");
-        return NULL;
-    }
-    
+void* safe_malloc(size_t size) {
     void* ptr = malloc(size);
-    if (!ptr) {
-        char error_msg[100];
-        sprintf(error_msg, "Failed to allocate %zu bytes for %s", size, description);
-        SET_ERROR(ERR_MEMORY_ALLOCATION, error_msg);
-        return NULL;
+    if (ptr == NULL && size > 0) {
+        snprintf(g_error_message, sizeof(g_error_message), 
+                "Memory allocation failed for %zu bytes", size);
+        writeErrorLog(g_error_message);
     }
-    
-    // Clear the allocated memory
-    memset(ptr, 0, size);
-    
-    // Track the allocation
-    track_allocation(ptr, size, "unknown", 0, description);
-    
     return ptr;
 }
 
-// Safe memory reallocation with error handling
-void* safe_realloc(void* ptr, size_t size, const char* description) {
-    if (size == 0) {
-        SET_ERROR(ERR_INVALID_INPUT, "Attempted to reallocate to zero bytes");
-        return NULL;
-    }
+// Set error message
+void error_set(const char* format, ...) {
+    va_list args;
+    va_start(args, format);
+    vsnprintf(g_error_message, sizeof(g_error_message), format, args);
+    va_end(args);
     
-    // If ptr is NULL, this is equivalent to malloc
-    if (!ptr) {
-        return safe_malloc(size, description);
-    }
-    
-    // Track deallocation of the old pointer
-    track_deallocation(ptr);
-    
-    // Reallocate
+    // Log the error
+    writeErrorLog(g_error_message);
+}
+
+// Get last error message
+const char* error_get(void) {
+    return g_error_message;
+}
+
+// Safe memory reallocation
+void* safe_realloc(void* ptr, size_t size) {
     void* new_ptr = realloc(ptr, size);
-    if (!new_ptr) {
-        char error_msg[100];
-        sprintf(error_msg, "Failed to reallocate %zu bytes for %s", size, description);
-        SET_ERROR(ERR_MEMORY_ALLOCATION, error_msg);
-        return NULL;
+    if (new_ptr == NULL && size > 0) {
+        snprintf(g_error_message, sizeof(g_error_message), 
+                "Memory reallocation failed for %zu bytes", size);
+        writeErrorLog(g_error_message);
     }
-    
-    // Track the new allocation
-    track_allocation(new_ptr, size, "unknown", 0, description);
-    
     return new_ptr;
 }
 
-// Safe memory deallocation with NULL check
-int safe_free(void** ptr) {
-    if (!ptr || !*ptr) {
-        return 0; // Already NULL
+// Safe string duplication
+char* safe_strdup(const char* str) {
+    if (str == NULL) {
+        snprintf(g_error_message, sizeof(g_error_message), 
+                "Attempted to duplicate NULL string");
+        writeErrorLog(g_error_message);
+        return NULL;
     }
     
-    // Track deallocation
-    track_deallocation(*ptr);
-    
-    // Free and set to NULL
-    free(*ptr);
-    *ptr = NULL;
-    
-    return 1;
+    char* new_str = strdup(str);
+    if (new_str == NULL) {
+        snprintf(g_error_message, sizeof(g_error_message), 
+                "String duplication failed for %zu bytes", strlen(str) + 1);
+        writeErrorLog(g_error_message);
+    }
+    return new_str;
+}
+
+// Safe free - checks for NULL pointer
+void safe_free(void* ptr) {
+    if (ptr != NULL) {
+        free(ptr);
+    }
 }
 
 // Track memory allocation for debugging

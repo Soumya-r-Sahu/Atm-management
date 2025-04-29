@@ -1,6 +1,7 @@
 #include "card_num_validation.h"
 #include "../utils/logger.h"
 #include "../common/paths.h"
+#include "../common/constants.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -39,7 +40,7 @@ bool isValidCardFormat(long long cardNumber) {
 
 // Check if a card exists in our system
 bool cardExistsInSystem(int cardNumber) {
-    FILE *file = fopen(CREDENTIALS_FILE, "r");
+    FILE *file = fopen(getCardFilePath(), "r");
     if (file == NULL) {
         writeErrorLog("Failed to open credentials file for card existence check");
         return false;

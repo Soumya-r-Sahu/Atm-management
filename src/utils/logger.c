@@ -1,5 +1,6 @@
 #include "logger.h"
 #include "../common/paths.h"
+#include "../transaction/transaction_types.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
@@ -83,28 +84,16 @@ void writeAuditLog(const char *category, const char *message) {
 }
 
 // Log transaction with success/failure status
-void logTransaction(int cardNumber, TransactionType type, float amount, int success) {
+void writeTransactionLog(int cardNumber, const char* transactionType, float amount, int success) {
     time_t now = time(NULL);
     struct tm *tm_now = localtime(&now);
     char timestamp[30];
     strftime(timestamp, sizeof(timestamp), "%Y-%m-%d %H:%M:%S", tm_now);
     
-    // Convert transaction type to string
-    const char* typeStr;
-    switch (type) {
-        case TRANSACTION_BALANCE_CHECK: typeStr = "Balance Check"; break;
-        case TRANSACTION_DEPOSIT: typeStr = "Deposit"; break;
-        case TRANSACTION_WITHDRAWAL: typeStr = "Withdrawal"; break;
-        case TRANSACTION_MONEY_TRANSFER: typeStr = "Money Transfer"; break;
-        case TRANSACTION_MINI_STATEMENT: typeStr = "Mini Statement"; break;
-        case TRANSACTION_PIN_CHANGE: typeStr = "PIN Change"; break;
-        default: typeStr = "Unknown"; break;
-    }
-    
     // Format for transaction logs
     char logEntry[512];
     sprintf(logEntry, "[%s] Card: %d, Type: %s, Amount: $%.2f, Status: %s\n", 
-            timestamp, cardNumber, typeStr, amount, success ? "Success" : "Failed");
+            timestamp, cardNumber, transactionType, amount, success ? "Success" : "Failed");
     
     const char* transactionPath = isTestingMode() ? 
         TEST_TRANSACTIONS_LOG_FILE : PROD_TRANSACTIONS_LOG_FILE;
