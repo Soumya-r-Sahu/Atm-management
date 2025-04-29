@@ -1,0 +1,512 @@
+/* SBI ATM Interface Styles */
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    font-family: Arial, sans-serif;
+}
+
+body {
+    background: #f0f0f0;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    padding: 20px;
+}
+
+/* Main ATM Container */
+.atm-container {
+    width: 800px;
+    background: #e0e0e0;
+    border-radius: 15px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+    overflow: hidden;
+    border: 5px solid #333;
+}
+
+/* ATM Header */
+.atm-header {
+    background: #11345B;
+    color: white;
+    display: flex;
+    align-items: center;
+    padding: 15px;
+    border-bottom: 3px solid #F8A000;
+}
+
+.logo {
+    flex: 1;
+}
+
+.logo img {
+    max-height: 50px;
+    max-width: 120px;
+}
+
+.welcome-text {
+    flex: 2;
+    text-align: right;
+}
+
+.welcome-text h2 {
+    font-size: 22px;
+    margin-bottom: 5px;
+}
+
+.welcome-text p {
+    font-size: 14px;
+}
+
+/* ATM Screen */
+.atm-screen {
+    background: #121212;
+    color: white;
+    min-height: 400px;
+    padding: 20px;
+    position: relative;
+    border: 10px solid #333;
+    border-radius: 5px;
+    box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.5);
+}
+
+.screen-content {
+    text-align: center;
+    padding: 10px;
+    background: #043263;
+    min-height: 360px;
+    border-radius: 5px;
+    box-shadow: inset 0 0 15px rgba(0, 0, 0, 0.7);
+    position: relative;
+}
+
+.hidden {
+    display: none;
+}
+
+/* Card Animation */
+.card-animation {
+    margin: 50px auto;
+    position: relative;
+    width: 150px;
+    height: 100px;
+}
+
+.card {
+    width: 150px;
+    height: 90px;
+    background: linear-gradient(45deg, #ffd700, #f8a000);
+    border-radius: 10px;
+    position: absolute;
+    top: 0;
+    left: 0;
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+    animation: cardInsert 2s ease-in-out infinite;
+    z-index: 2;
+}
+
+.slot {
+    width: 160px;
+    height: 10px;
+    background: #222;
+    position: absolute;
+    bottom: 0;
+    left: -5px;
+    border-top: 2px solid #444;
+}
+
+@keyframes cardInsert {
+    0% {
+        transform: translateY(0);
+    }
+    50% {
+        transform: translateY(30px);
+    }
+    100% {
+        transform: translateY(0);
+    }
+}
+
+/* PIN Screen */
+.pin-input {
+    margin: 30px auto;
+    width: 150px;
+}
+
+.pin-input input {
+    width: 100%;
+    padding: 15px;
+    text-align: center;
+    font-size: 24px;
+    letter-spacing: 10px;
+    background: #fff;
+    border: none;
+    border-radius: 5px;
+}
+
+.keypad-hint {
+    margin-top: 20px;
+    font-style: italic;
+    opacity: 0.8;
+}
+
+.pin-message {
+    height: 20px;
+    color: red;
+    margin-top: 10px;
+    font-size: 14px;
+}
+
+/* Menu Options */
+.menu-options {
+    display: flex;
+    flex-direction: column;
+    height: 310px;
+    justify-content: space-between;
+    margin-top: 20px;
+}
+
+.menu-row {
+    display: flex;
+    justify-content: space-between;
+}
+
+.menu-item {
+    width: 48%;
+    background: #0C4F9C;
+    padding: 12px 5px;
+    border-radius: 5px;
+    border: 2px solid #247BED;
+    cursor: pointer;
+    font-size: 16px;
+    transition: background-color 0.3s, transform 0.2s;
+}
+
+.menu-item:hover {
+    background-color: #1C6DD8;
+    transform: translateY(-3px);
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+}
+
+.back-btn {
+    background-color: #555;
+    border: 2px solid #777;
+}
+
+.back-btn:hover {
+    background-color: #666;
+}
+
+/* Form Inputs */
+.input-form {
+    margin: 40px 20px;
+    text-align: left;
+}
+
+.input-form label {
+    display: block;
+    margin-bottom: 10px;
+    font-size: 16px;
+}
+
+.input-form input {
+    width: 100%;
+    padding: 10px;
+    font-size: 20px;
+    border-radius: 5px;
+    border: none;
+    text-align: right;
+}
+
+/* Action Buttons */
+.action-buttons {
+    margin-top: 30px;
+    display: flex;
+    justify-content: space-around;
+}
+
+.action-btn {
+    padding: 10px 20px;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 16px;
+    transition: background-color 0.3s, transform 0.2s;
+}
+
+.cancel-btn {
+    background: #e74c3c;
+    color: white;
+}
+
+.confirm-btn {
+    background: #2ecc71;
+    color: white;
+}
+
+.cancel-btn:hover, .confirm-btn:hover {
+    opacity: 0.9;
+    transform: translateY(-2px);
+}
+
+/* Processing Animation */
+.processing-animation {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+}
+
+.spinner {
+    width: 60px;
+    height: 60px;
+    border: 5px solid rgba(255, 255, 255, 0.3);
+    border-radius: 50%;
+    border-top-color: #F8A000;
+    animation: spin 1s ease-in-out infinite;
+    margin-bottom: 20px;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+/* Transaction Success/Fail Messages */
+.success-message, .failed-message {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+}
+
+.success-icon, .failed-icon {
+    font-size: 50px;
+    border-radius: 50%;
+    width: 80px;
+    height: 80px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 20px;
+}
+
+.success-icon {
+    background-color: #27ae60;
+}
+
+.failed-icon {
+    background-color: #e74c3c;
+}
+
+.receipt-option {
+    margin-top: 30px;
+    border-top: 1px solid #555;
+    padding-top: 20px;
+    width: 100%;
+}
+
+.receipt-option p {
+    margin-bottom: 15px;
+}
+
+/* Balance and Mini-Statement */
+.balance-info, .statement-info {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 5px;
+    padding: 20px;
+    margin: 20px 10px;
+}
+
+.balance-info table, .statement-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 20px;
+}
+
+.balance-info td {
+    padding: 8px;
+    text-align: left;
+}
+
+.balance-info td:nth-child(2) {
+    text-align: right;
+    font-weight: bold;
+}
+
+.statement-table th, .statement-table td {
+    padding: 8px 12px;
+    text-align: left;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.statement-table th {
+    background: rgba(255, 255, 255, 0.1);
+    font-weight: normal;
+}
+
+.statement-table td:last-child {
+    text-align: right;
+}
+
+/* Exit Screen */
+#exit-screen {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+}
+
+#exit-screen h3 {
+    margin-bottom: 20px;
+}
+
+#exit-screen p {
+    margin-bottom: 10px;
+    color: #f8f8f8;
+}
+
+.main-btn {
+    margin-top: 20px;
+    padding: 10px 20px;
+    background: #F8A000;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 16px;
+    transition: background-color 0.3s;
+}
+
+.main-btn:hover {
+    background: #e09000;
+}
+
+/* ATM Keypad */
+.atm-keypad {
+    background: #444;
+    padding: 20px;
+    border-top: 3px solid #333;
+    display: grid;
+    grid-gap: 10px;
+}
+
+.keypad-row {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    grid-gap: 10px;
+}
+
+.keypad-btn {
+    padding: 15px 0;
+    font-size: 20px;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: transform 0.1s;
+}
+
+.keypad-btn:active {
+    transform: translateY(2px);
+}
+
+.number-btn {
+    background: #e0e0e0;
+    font-weight: bold;
+}
+
+.function-btn {
+    color: white;
+    font-size: 14px;
+    font-weight: bold;
+}
+
+.cancel-btn {
+    background: #e74c3c;
+}
+
+.clear-btn {
+    background: #f39c12;
+}
+
+.enter-btn {
+    background: #27ae60;
+}
+
+.help-btn {
+    background: #3498db;
+}
+
+.empty-btn {
+    background: transparent;
+    cursor: default;
+}
+
+.empty-btn:active {
+    transform: none;
+}
+
+/* Card and Cash Slots */
+.atm-card-slot {
+    display: flex;
+    justify-content: space-between;
+    padding: 15px;
+    background: #333;
+    color: white;
+    text-align: center;
+}
+
+.card-return-slot, .receipt-cash-slot {
+    width: 45%;
+    height: 40px;
+    background: #222;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    border: 2px solid #555;
+    border-radius: 5px;
+    font-size: 14px;
+}
+
+/* Media Queries for Responsiveness */
+@media (max-width: 800px) {
+    .atm-container {
+        width: 100%;
+    }
+    
+    .menu-item {
+        font-size: 14px;
+        padding: 10px 5px;
+    }
+    
+    .keypad-btn {
+        padding: 12px 0;
+        font-size: 18px;
+    }
+}
+
+@media (max-width: 500px) {
+    .atm-header {
+        flex-direction: column;
+        text-align: center;
+    }
+    
+    .welcome-text {
+        margin-top: 10px;
+        text-align: center;
+    }
+    
+    .menu-row {
+        flex-direction: column;
+    }
+    
+    .menu-item {
+        width: 100%;
+        margin-bottom: 10px;
+    }
+    
+    .menu-options {
+        height: auto;
+    }
+}
