@@ -39,7 +39,7 @@ int main(int argc, char *argv[]) {
         printf("Error: Failed to initialize required files and directories.\n");
         return 1;
     }
-    
+
     // Initialize language support
     if (!initLanguageSupport()) {
         printf("Warning: Language support could not be fully initialized.\n");
