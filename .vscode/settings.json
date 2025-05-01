@@ -3,6 +3,10 @@
     "C_Cpp.dimInactiveRegions": false,
     "files.associations": {
         "556116": "cpp",
-        "stdio.h": "c"
+        "stdio.h": "c",
+        "array": "cpp",
+        "string": "cpp",
+        "string_view": "cpp",
+        "span": "cpp"
     }
 }

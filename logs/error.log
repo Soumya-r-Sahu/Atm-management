@@ -1,7 +1,14 @@
-Log ID  | User ID  | Event Type                  | Event Details                                      | Event Timestamp       | Status
----------|----------|----------------------------|---------------------------------------------------|----------------------|----------
-S50001   | C10001   | Multiple Wrong PIN Attempts| 2 incorrect PIN entries                           | 2025-04-26 09:28:45  | Resolved
-S50002   | C10002   | Suspicious Withdrawal      | Large withdrawal amount (₹5000) detected          | 2025-04-26 14:47:35  | Unresolved
-S50003   | Anonymous| System Error               | Database connection timeout                       | 2025-04-26 18:30:22  | Resolved
-S50004   | C10001   | Session Timeout            | User session expired while transaction in progress| 2025-04-27 10:15:40  | Resolved
-S50005   | Anonymous| Failed Login               | Invalid card number attempted                     | 2025-04-27 11:05:12  | Resolved
++----------------+----------+---------------------+----------+--------------------------+--------------------------------+
+| ERROR_ID      | ERROR_TYPE| ERROR_TIME         | SOURCE   | ERROR_SEVERITY        | ERROR_DESCRIPTION              |
++----------------+----------+---------------------+----------+--------------------------+--------------------------------+
+| ERR20250425001 | System   | 2025-04-25 03:12:33 | ATM001   | Critical               | Cash dispenser malfunction      |
+| ERR20250425002 | Network  | 2025-04-25 07:45:21 | ATM002   | High                   | Connection timeout to server    |
+| ERR20250426001 | Database | 2025-04-26 12:33:44 | Backend  | Medium                 | Query execution failed          |
+| ERR20250426002 | Security | 2025-04-26 15:17:09 | ATM003   | High                   | Multiple invalid PIN attempts   |
+| ERR20250427001 | Hardware | 2025-04-27 09:22:51 | ATM001   | High                   | Receipt printer error           |
+| ERR20250427002 | Software | 2025-04-27 14:05:37 | ATM004   | Low                    | UI rendering issue              |
+| ERR20250428001 | Network  | 2025-04-28 08:30:12 | VATM001  | Medium                 | API response timeout            |
+| ERR20250429001 | Database | 2025-04-29 11:42:18 | Backend  | Critical               | Transaction rollback failure    |
+| ERR20250430001 | Security | 2025-04-30 18:25:03 | VATM002  | Critical               | Potential brute force attempt   |
+| ERR20250501001 | System   | 2025-05-01 07:15:29 | ATM005   | High                   | System reboot during transaction|
++----------------+----------+---------------------+----------+--------------------------+--------------------------------+

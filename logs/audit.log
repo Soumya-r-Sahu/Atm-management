@@ -1,9 +1,17 @@
-Log ID  | User ID  | Action Type | Table Affected | Action Details                             | Timestamp
----------|----------|------------|---------------|------------------------------------------|---------------------
-L50001   | C10001   | Login      | Account       | User logged in successfully              | 2025-04-26 09:30:15
-L50002   | C10001   | Query      | Account       | Balance check performed                  | 2025-04-26 09:31:22
-L50003   | C10002   | Login      | Account       | User logged in successfully              | 2025-04-26 14:45:10
-L50004   | C10002   | Update     | Account       | Withdrawal of 1000.00 processed          | 2025-04-26 14:47:35
-L50005   | admin123 | Login      | Admin         | Admin logged in successfully             | 2025-04-27 08:15:45
-L50006   | admin123 | Query      | System        | System configuration viewed              | 2025-04-27 08:16:30
-L50007   | admin123 | Update     | System        | Daily withdrawal limit updated           | 2025-04-27 08:20:15
++----------+------------+----------------+----------------+--------------------------------------------+-------------------------+
+| AUDIT_ID | USER_ID    | ACTION_TYPE    | TABLE_AFFECTED  | ACTION_DETAILS                            | TIMESTAMP               |
++----------+------------+----------------+----------------+--------------------------------------------+-------------------------+
+| A2504001 | C10001     | Login          | Account        | User logged in successfully               | 2025-04-26 09:30:15     |
+| A2504002 | C10001     | Query          | Account        | Balance check performed                   | 2025-04-26 09:31:22     |
+| A2504003 | C10002     | Login          | Account        | User logged in successfully               | 2025-04-26 14:45:10     |
+| A2504004 | C10002     | Update         | Account        | Withdrawal of ₹1000.00 processed          | 2025-04-26 14:47:35     |
+| A2504005 | admin123   | Login          | Admin          | Admin logged in successfully              | 2025-04-27 08:15:45     |
+| A2504006 | admin123   | Query          | System         | System configuration viewed               | 2025-04-27 08:16:30     |
+| A2504007 | admin123   | Update         | System         | Daily withdrawal limit updated            | 2025-04-27 08:20:15     |
+| A2504008 | admin456   | Update         | ATM            | Cash replenishment recorded               | 2025-04-27 13:45:22     |
+| A2504009 | C10005     | Create         | Account        | New account created                       | 2025-04-28 10:30:18     |
+| A2504010 | admin123   | Update         | Security       | PIN change policy updated                 | 2025-04-29 09:15:40     |
+| A2504011 | C10003     | Update         | Account        | Mobile number updated                     | 2025-04-29 11:22:05     |
+| A2504012 | admin456   | Query          | Reports        | Transaction report generated              | 2025-04-30 16:40:12     |
+| A2505001 | admin123   | Update         | System         | System maintenance scheduled              | 2025-05-01 14:22:55     |
++----------+------------+----------------+----------------+--------------------------------------------+-------------------------+

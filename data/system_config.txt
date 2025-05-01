@@ -1,9 +1,16 @@
-Config ID | Config Name                | Config Value | Updated At
-----------|----------------------------|-------------|---------------------
-C80001    | ATM_WITHDRAWAL_LIMIT       | 25000       | 2025-01-01 00:00:00
-C80002    | MIN_BALANCE                | 500         | 2025-01-01 00:00:00
-C80003    | MAX_WRONG_PIN_ATTEMPTS     | 3           | 2025-01-01 00:00:00
-C80004    | SESSION_TIMEOUT_SECONDS    | 180         | 2025-01-01 00:00:00
-C80005    | DAILY_TRANSACTION_LIMIT    | 50000       | 2025-01-01 00:00:00
-C80006    | DEFAULT_LANGUAGE           | en          | 2025-01-01 00:00:00
-C80007    | MAINTENANCE_MODE           | false       | 2025-04-27 00:00:00
++---------------------------+---------------------+--------------------------------------+
+| CONFIGURATION PARAMETER   | VALUE               | DESCRIPTION                          |
++---------------------------+---------------------+--------------------------------------+
+| max_withdrawal_limit      | ₹25000            | Maximum amount per withdrawal        |
+| max_transfer_limit        | ₹50000            | Maximum amount per transfer          |
+| daily_transaction_limit   | ₹100000           | Maximum daily transaction limit      |
+| enable_virtual_atm        | true                | Enable virtual ATM services          |
+| virtual_withdrawal_limit  | ₹10000            | Virtual ATM withdrawal limit         |
+| transaction_fee           | ₹0.00             | Fee per transaction                  |
+| force_pin_change_days     | 90 days             | Force PIN change interval            |
+| receipt_enabled           | true                | Enable receipt printing              |
+| service_start_time        | 00:00               | Service start time                   |
+| service_end_time          | 24:00               | Service end time                     |
+| maintenance_day           | Sunday              | Weekly maintenance day               |
+| language_support          | en,hi,mr,gu         | Supported languages                  |
++---------------------------+---------------------+--------------------------------------+

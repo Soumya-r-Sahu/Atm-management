@@ -1,9 +1,20 @@
-Transaction ID | Account ID | Transaction Type | Amount   | Transaction Time     | Transaction Status | Transaction Remarks
----------------|------------|-----------------|----------|---------------------|-------------------|---------------------
-T50001         | A10001     | Withdrawal      | 100.00   | 2025-04-26 09:35:45 | Success           | ATM Withdrawal
-T50002         | A10002     | Deposit         | 250.00   | 2025-04-26 14:50:22 | Success           | Cash Deposit
-T50003         | A10001     | Balance Check   | 0.00     | 2025-04-26 16:30:15 | Success           | Balance Inquiry
-T50004         | A10002     | Withdrawal      | 1000.00  | 2025-04-26 14:47:35 | Success           | ATM Withdrawal
-T50005         | A10001     | Transfer        | 50.00    | 2025-04-27 09:45:10 | Success           | Transfer to A10002
-T50006         | A10002     | Fee             | 5.00     | 2025-04-27 10:00:00 | Success           | ATM Service Fee
++----------------+------------+------------------+------------+------------------------+--------------------+------------------------+
+| TRANSACTION_ID | ACCOUNT_ID | TRANSACTION_TYPE | AMOUNT     | TRANSACTION_TIME      | TRANSACTION_STATUS | TRANSACTION_REMARKS    |
++----------------+------------+------------------+------------+------------------------+--------------------+------------------------+
+| T50001         | A10001     | Withdrawal       | ₹100.00    | 2025-04-26 09:35:45   | Success            | ATM Withdrawal         |
+| T50002         | A10002     | Deposit          | ₹250.00    | 2025-04-26 14:50:22   | Success            | Cash Deposit           |
+| T50003         | A10001     | Balance Check    | ₹0.00      | 2025-04-26 16:30:15   | Success            | Balance Inquiry        |
+| T50004         | A10002     | Withdrawal       | ₹1000.00   | 2025-04-26 14:47:35   | Success            | ATM Withdrawal         |
+| T50005         | A10001     | Transfer         | ₹50.00     | 2025-04-27 09:45:10   | Success            | Transfer to A10002     |
+| T50006         | A10002     | Fee              | ₹5.00      | 2025-04-27 10:00:00   | Success            | ATM Service Fee        |
+| T50007         | A10003     | Withdrawal       | ₹2000.00   | 2025-04-28 11:22:35   | Success            | ATM Withdrawal         |
+| T50008         | A10001     | Transfer         | ₹500.00    | 2025-04-28 13:45:20   | Failed             | Insufficient funds     |
+| T50009         | A10005     | Deposit          | ₹5000.00   | 2025-04-29 09:20:15   | Success            | Cash Deposit           |
+| T50010         | A10002     | Bill Payment     | ₹750.00    | 2025-04-29 16:30:45   | Success            | Electricity bill       |
+| T50011         | A10003     | Withdrawal       | ₹5000.00   | 2025-04-30 10:15:22   | Failed             | Exceeds daily limit    |
+| T50012         | A10004     | Balance Check    | ₹0.00      | 2025-04-30 14:20:18   | Success            | Balance Inquiry        |
+| T50013         | A10001     | Mini Statement   | ₹0.00      | 2025-05-01 08:45:30   | Success            | Last 5 transactions    |
+| T50014         | A10005     | PIN Change       | ₹0.00      | 2025-05-01 12:10:25   | Success            | Security update        |
+| T50015         | A10002     | Withdrawal       | ₹1500.00   | 2025-05-01 16:30:45   | Success            | ATM Withdrawal         |
++----------------+------------+------------------+------------+------------------------+--------------------+------------------------+
 

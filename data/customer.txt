@@ -1,9 +1,14 @@
-Customer ID | Account ID | Account Holder Name | Type    | Status | Balance
-------------|------------|---------------------|---------|--------|--------
-C10001      | A10001     | Rahul Sharma        | Regular | Active | 25000.00
-C10002      | A10002     | Priya Patel         | Regular | Active | 13500.50
-C10003      | A10003     | Amit Kumar          | Regular | Active | 7800.25
-C10004      | A10004     | Neha Singh          | Regular | Active | 32400.75
-C10005      | A10005     | Rajesh Gupta        | Regular | Active | 9250.00
-C10006      | A10006     | Kavita Reddy        | Premium | Active | 45000.00
-C10007      | A10007     | Vikram Malhotra     | Premium | Active | 68000.00
++------------+----------------+---------------------------+------------------+----------------------+--------------------+--------------+-------------+
+| CUSTOMER_ID| NAME           | ADDRESS                   | PHONE           | EMAIL                | ACCOUNT_NUMBER     | IFSC_CODE    | ACCOUNT_TYPE|
++------------+----------------+---------------------------+------------------+----------------------+--------------------+--------------+-------------+
+| 1          | John Doe       | 123 Main St, City         | +91-98765-11111 | user0@example.com    | 11463834400        | SBIN0012345  | Savings     |
+| 2          | Jane Smith     | 456 Oak Ave, Town         | +91-98765-12222 | user0@example.com    | 11428120818        | SBIN0023456  | Current     |
+| 3          | Robert Johnson | 789 Pine Rd, Village      | +91-98765-13333 | user0@example.com    | 11564135139        | SBIN0034567  | Savings     |
+| 4          | Emily Davis    | 101 Elm Blvd, Metro       | +91-98765-14444 | user0@example.com    | 10801701193        | SBIN0045678  | Savings     |
+| 5          | Michael Wilson | 202 Cedar Ln, County      | +91-98765-15555 | user0@example.com    | 10776616025        | SBIN0056789  | Current     |
+| 6          | Sarah Brown    | 303 Birch Dr, District    | +91-98765-16666 | user0@example.com    | 10263816148        | SBIN0067890  | Savings     |
+| 7          | David Lee      | 404 Maple Way, Borough    | +91-98765-17777 | user0@example.com    | 12086185215        | SBIN0078901  | Current     |
+| 8          | Lisa Wang      | 505 Willow St, Municipality | +91-98765-18888 | user0@example.com    | 11573632996        | SBIN0089012  | Savings     |
+| 9          | James Miller   | 606 Cherry Ave, Hamlet    | +91-98765-19999 | user0@example.com    | 11868867869        | SBIN0090123  | Savings     |
+| 10         | Emma Taylor    | 707 Spruce Ct, Township   | +91-98765-21110 | user10@example.com   | 11842731760        | SBIN0001234  | Current     |
++------------+----------------+---------------------------+------------------+----------------------+--------------------+--------------+-------------+
