@@ -8,6 +8,9 @@
 #include <sys/types.h>
 #include <errno.h>
 
+// Define log file paths
+#define TRANSACTIONS_LOG "logs/transactions.log"
+
 // Ensure log directories exist
 static void ensureLogDirectoriesExist() {
     mkdir("logs", 0755);  // Create logs directory if it doesn't exist
@@ -167,11 +170,29 @@ void write_audit_log(const char* category, const char* message) {
     writeAuditLog(category, message);
 }
 
+// Initialize logging system
+void initialize_logging() {
+    ensureLogDirectoriesExist();
+    writeInfoLog("Logging system initialized");
+}
+
+// Close logs and clean up resources
+void close_logs() {
+    // Nothing specific to clean up in current implementation
+    writeInfoLog("Logging system shutdown");
+}
+
 // Write to dedicated transaction log
 void writeDetailedTransactionLog(const char* transactionType, const char* details) {
     FILE* transLog = fopen(TRANSACTIONS_LOG, "a");
     if (transLog) {
-        // ...existing code...
+        time_t now = time(NULL);
+        struct tm* tm_info = localtime(&now);
+        char timestamp[30];
+        strftime(timestamp, sizeof(timestamp), "%Y-%m-%d %H:%M:%S", tm_info);
+        
+        fprintf(transLog, "[%s] [%s] %s\n", timestamp, transactionType, details ? details : "");
+        fclose(transLog);
     }
 }
 

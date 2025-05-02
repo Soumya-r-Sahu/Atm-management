@@ -110,4 +110,23 @@ bool decrement_login_attempts(const char* username);
  */
 bool update_admin_status(AdminUser* admin, const char* username, bool status);
 
+/**
+ * Create a new admin account with specified roles
+ * @param current_admin Pointer to the current admin session (must be SuperAdmin)
+ * @param new_username Username for the new admin
+ * @param new_password Password for the new admin
+ * @param roles Array of roles to assign to the new admin
+ * @param num_roles Number of roles being assigned
+ * @return true if admin was created successfully, false otherwise
+ */
+bool create_admin_account(AdminUser* current_admin, const char* new_username, 
+                         const char* new_password, const char* roles[], int num_roles);
+
+/**
+ * Check if a username already exists in the admin database
+ * @param username Username to check
+ * @return true if username exists, false otherwise
+ */
+bool admin_username_exists(const char* username);
+
 #endif // ADMIN_AUTH_H

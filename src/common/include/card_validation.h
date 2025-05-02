@@ -1,1 +1,0 @@
-/home/asus/lerning/Atm-management/include/common/validation/card_validation.h

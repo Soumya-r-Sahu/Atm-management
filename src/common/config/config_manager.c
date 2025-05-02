@@ -53,8 +53,10 @@ static int changed_count = 0;
 // Internal buffer to return config values
 static char config_value_buffer[MAX_CONFIG_VALUE_SIZE];
 
-// Helper function to trim whitespace
+// Helper function to trim whitespace - returns the same string with whitespace trimmed
 static char* trim_whitespace(char* str) {
+    if (!str) return str;
+    
     char* end;
     
     // Trim leading space
@@ -70,26 +72,6 @@ static char* trim_whitespace(char* str) {
     *(end + 1) = 0;
     
     return str;
-}
-
-// Function to trim leading and trailing whitespace from a string
-static void trim_whitespace(char* str) {
-    if (!str) return;
-    
-    // Trim leading space
-    char* start = str;
-    while(isspace((unsigned char)*start)) start++;
-    
-    if(start != str) {
-        memmove(str, start, strlen(start) + 1);
-    }
-    
-    // Trim trailing space
-    char* end = str + strlen(str) - 1;
-    while(end > str && isspace((unsigned char)*end)) end--;
-    
-    // Write new null terminator
-    *(end+1) = '\0';
 }
 
 // Add a key to the changed keys list
@@ -410,10 +392,10 @@ const char* get_config_value(const char* key) {
 }
 
 // Get configuration value as boolean (true/false)
-bool getConfigValueBool(const char* key) {
+int getConfigValueBool(const char* key) {
     const char* value = get_config_value(key);
     if (!value) {
-        return false;
+        return 0;
     }
     
     // Check for true values
@@ -422,17 +404,17 @@ bool getConfigValueBool(const char* key) {
         strcasecmp(value, "1") == 0 ||
         strcasecmp(value, "enable") == 0 ||
         strcasecmp(value, "enabled") == 0) {
-        return true;
+        return 1;
     }
     
-    return false;
+    return 0;
 }
 
 // Get configuration value as integer
-int getConfigValueInt(const char* key, int defaultValue) {
+int getConfigValueInt(const char* key) {
     const char* value = get_config_value(key);
     if (!value) {
-        return defaultValue;
+        return 0;
     }
     
     // Convert to integer
@@ -442,17 +424,17 @@ int getConfigValueInt(const char* key, int defaultValue) {
     // Check if conversion was successful
     if (*end != '\0' && !isspace(*end)) {
         writeErrorLog("Failed to convert config value to integer");
-        return defaultValue;
+        return 0;
     }
     
     return result;
 }
 
 // Get configuration value as float
-float getConfigValueFloat(const char* key, float defaultValue) {
+float getConfigValueFloat(const char* key) {
     const char* value = get_config_value(key);
     if (!value) {
-        return defaultValue;
+        return 0.0f;
     }
     
     // Convert to float
@@ -460,25 +442,25 @@ float getConfigValueFloat(const char* key, float defaultValue) {
     float result = strtof(value, &end);
     
     // Check if conversion was successful
-    if (*end != '\0' && !isspace(*end) && *end != '₹') {
+    if (*end != '\0' && !isspace(*end)) {
         writeErrorLog("Failed to convert config value to float");
-        return defaultValue;
+        return 0.0f;
     }
     
     return result;
 }
 
 // Set configuration value
-bool setConfigValue(const char* key, const char* value) {
+int setConfigValue(const char* key, const char* value) {
     if (!key || !value) {
         writeErrorLog("NULL parameters to setConfigValue");
-        return false;
+        return 0;
     }
     
     FILE* file = fopen(getSystemConfigFilePath(), "r");
     if (!file) {
         writeErrorLog("Failed to open system config file");
-        return false;
+        return 0;
     }
     
     char tempPath[256];
@@ -488,7 +470,7 @@ bool setConfigValue(const char* key, const char* value) {
     if (!tempFile) {
         fclose(file);
         writeErrorLog("Failed to create temp config file");
-        return false;
+        return 0;
     }
     
     char line[512];
@@ -539,26 +521,26 @@ bool setConfigValue(const char* key, const char* value) {
     if (remove(getSystemConfigFilePath()) != 0) {
         writeErrorLog("Failed to remove original config file");
         remove(tempPath);
-        return false;
+        return 0;
     }
     
     if (rename(tempPath, getSystemConfigFilePath()) != 0) {
         writeErrorLog("Failed to rename temp config file");
-        return false;
+        return 0;
     }
     
     char logMsg[256];
     snprintf(logMsg, sizeof(logMsg), "Config updated: %s = %s", key, value);
     writeAuditLog("CONFIG", logMsg);
     
-    return true;
+    return 1;
 }
 
-// Add a new configuration setting
-bool add_config(const char* key, const char* value, const char* description) {
+// Add a new configuration setting (modern version)
+int addConfigSetting(const char* key, const char* value, const char* description) {
     if (!key || !value) {
-        writeErrorLog("NULL parameters to add_config");
-        return false;
+        writeErrorLog("NULL parameters to addConfigSetting");
+        return 0;
     }
     
     // Check if config already exists
@@ -571,7 +553,7 @@ bool add_config(const char* key, const char* value, const char* description) {
     FILE* file = fopen(getSystemConfigFilePath(), "a");
     if (!file) {
         writeErrorLog("Failed to open system config file for append");
-        return false;
+        return 0;
     }
     
     // Trim description if it's too long
@@ -589,7 +571,7 @@ bool add_config(const char* key, const char* value, const char* description) {
     snprintf(logMsg, sizeof(logMsg), "New config added: %s = %s", key, value);
     writeAuditLog("CONFIG", logMsg);
     
-    return true;
+    return 1;
 }
 
 // Get multiple configuration values at once

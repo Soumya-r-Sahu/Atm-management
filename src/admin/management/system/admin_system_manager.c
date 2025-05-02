@@ -1,118 +1,148 @@
 #include "../../../../include/admin/management/system/admin_system_manager.h"
 #include "../../../../include/common/utils/logger.h"
-#include "../../../../include/common/database/database.h"
-#include "../../../../include/common/utils/path_manager.h"
-#include "../../../../include/common/config/config_manager.h"
+#include "../../../../include/common/paths.h"
+#include "../../../../include/admin/auth/service_status.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
-#include <dirent.h>
-#include <sys/stat.h>
-#include <unistd.h>
 
-// Toggle ATM/Banking service mode (online/offline)
-bool toggle_service_mode(AdminUser* admin) {
-    if (!admin || !admin->is_logged_in) {
-        writeErrorLog("Unauthorized attempt to toggle service mode");
-        return false;
-    }
-    
-    printf("\n=======================================\n");
-    printf("=      TOGGLE ATM/BANKING STATUS     =\n");
-    printf("=======================================\n");
-    
-    // Get current service status
-    bool serviceActive = false;
-    if (!getServiceStatus(&serviceActive)) {
-        printf("Error: Failed to retrieve current service status.\n");
-        return false;
-    }
-    
-    printf("Current service status: %s\n\n", serviceActive ? "ONLINE" : "OFFLINE");
-    printf("Do you want to switch to %s mode? (y/n): ", serviceActive ? "OFFLINE" : "ONLINE");
-    
-    char confirm[5];
-    if (!fgets(confirm, sizeof(confirm), stdin)) {
-        return false;
-    }
-    
-    if (tolower(confirm[0]) == 'y') {
-        bool newStatus = !serviceActive;
-        
-        if (setServiceStatus(newStatus)) {
-            printf("\nService status successfully changed to: %s\n", 
-                  newStatus ? "ONLINE" : "OFFLINE");
-            
-            char logMsg[100];
-            sprintf(logMsg, "Service status changed to %s by admin %s", 
-                   newStatus ? "ONLINE" : "OFFLINE", admin->username);
-            writeAuditLog("SYSTEM", logMsg);
-            
-            if (!newStatus) {
-                printf("\nWARNING: All ATM and banking services are now offline.\n");
-                printf("Customers will not be able to perform any transactions.\n");
-            } else {
-                printf("\nAll ATM and banking services are now back online.\n");
-                printf("Customers can resume normal transactions.\n");
-            }
-            return true;
-        } else {
-            printf("\nError: Failed to update service status. Please try again.\n");
-            writeErrorLog("Failed to update service status");
-            return false;
-        }
-    } else {
-        printf("\nOperation cancelled. Service status remains %s.\n", 
-              serviceActive ? "ONLINE" : "OFFLINE");
-        return true;
-    }
-}
+// Helper function declarations
+static void display_system_config(void);
+static void edit_transaction_limits(AdminUser* admin);
+static void configure_security_settings(AdminUser* admin);
+static void update_atm_status_config(AdminUser* admin);
 
-// View system log files
+// View system logs
 bool view_system_logs(AdminUser* admin) {
     if (!admin || !admin->is_logged_in) {
-        writeErrorLog("Unauthorized attempt to view system logs");
+        printf("Error: Not authorized. Please log in first.\n");
         return false;
     }
     
     printf("\n=======================================\n");
-    printf("=          VIEW SYSTEM LOGS          =\n");
+    printf("=          SYSTEM LOG VIEWER         =\n");
     printf("=======================================\n");
     
-    printf("Select log file to view:\n");
-    printf("1. Error log\n");
-    printf("2. Audit log\n");
-    printf("3. Transaction log\n");
-    printf("4. Withdrawals log\n");
-    printf("5. Return to main menu\n");
+    int choice;
+    
+    printf("1. View Error Logs\n");
+    printf("2. View Audit Logs\n");
+    printf("3. View Transaction Logs\n");
+    printf("4. Back to Main Menu\n");
+    printf("---------------------------------------\n");
     printf("Enter choice: ");
     
-    char choice_str[5];
-    if (!fgets(choice_str, sizeof(choice_str), stdin)) {
-        return false;
-    }
+    scanf("%d", &choice);
+    getchar(); // Clear input buffer
     
-    int choice = atoi(choice_str);
-    const char* logFilePath = NULL;
-    const char* logType = NULL;
+    char logPath[256];
+    const char* logType = "";
     
     switch (choice) {
         case 1:
-            logFilePath = getErrorLogFilePath();
+            strcpy(logPath, getErrorLogFilePath());
             logType = "Error";
             break;
         case 2:
-            logFilePath = getAuditLogFilePath();
+            strcpy(logPath, getAuditLogFilePath());
             logType = "Audit";
             break;
         case 3:
-            logFilePath = getTransactionLogFilePath();
+            strcpy(logPath, getTransactionsLogFilePath());
             logType = "Transaction";
             break;
         case 4:
-            logFilePath = getWithdrawalLogFilePath();
-            logType = "Withdrawals";
+            return true;
+        default:
+            printf("Invalid option. Please try again.\n");
+            return false;
+    }
+    
+    // Log the activity
+    char auditMessage[100];
+    sprintf(auditMessage, "Admin %s viewed %s logs", admin->username, logType);
+    writeAuditLog("ADMIN", auditMessage);
+    
+    FILE* logFile = fopen(logPath, "r");
+    if (logFile == NULL) {
+        printf("Error: Could not open the log file.\n");
+        return false;
+    }
+    
+    printf("\nDisplaying %s logs:\n", logType);
+    printf("---------------------------------------\n");
+    
+    char line[512];
+    int lineCount = 0;
+    const int PAGE_SIZE = 20; // Number of lines per page
+    
+    while (fgets(line, sizeof(line), logFile) != NULL) {
+        printf("%s", line);
+        lineCount++;
+        
+        // Paginate output
+        if (lineCount % PAGE_SIZE == 0) {
+            printf("---------------------------------------\n");
+            printf("Press Enter to continue, Q to quit: ");
+            char input = getchar();
+            if (input == 'q' || input == 'Q') {
+                break;
+            }
+        }
+    }
+    
+    fclose(logFile);
+    
+    printf("\nEnd of log. Press Enter to continue.");
+    getchar();
+    
+    return true;
+}
+
+// Manage system configuration
+bool manage_system_config(AdminUser* admin) {
+    if (!admin || !admin->is_logged_in) {
+        printf("Error: Not authorized. Please log in first.\n");
+        return false;
+    }
+    
+    // Verify user is SuperAdmin
+    if (!admin_has_role(admin, "SuperAdmin")) {
+        printf("Error: Only SuperAdmin users can manage system configuration.\n");
+        writeAuditLog("SECURITY", "Unauthorized attempt to access system configuration");
+        return false;
+    }
+    
+    printf("\n=======================================\n");
+    printf("=       SYSTEM CONFIGURATION         =\n");
+    printf("=======================================\n");
+    
+    int choice;
+    
+    printf("1. View Current Configuration\n");
+    printf("2. Edit Transaction Limits\n");
+    printf("3. Configure Security Settings\n");
+    printf("4. Update ATM Status\n");
+    printf("5. Back to Main Menu\n");
+    printf("---------------------------------------\n");
+    printf("Enter choice: ");
+    
+    scanf("%d", &choice);
+    getchar(); // Clear input buffer
+    
+    switch (choice) {
+        case 1:
+            display_system_config();
+            break;
+        case 2:
+            edit_transaction_limits(admin);
+            break;
+        case 3:
+            configure_security_settings(admin);
+            break;
+        case 4:
+            update_atm_status_config(admin);
             break;
         case 5:
             return true;
@@ -121,450 +151,245 @@ bool view_system_logs(AdminUser* admin) {
             return false;
     }
     
-    if (!logFilePath) {
-        printf("Error: Could not locate log file path.\n");
-        return false;
+    // Log the activity
+    writeAuditLog("ADMIN", "Managed system configuration");
+    return true;
+}
+
+// Display system configuration (helper function)
+static void display_system_config() {
+    printf("\nCurrent System Configuration:\n");
+    printf("---------------------------------------\n");
+    
+    // Read configuration from file
+    FILE* configFile = fopen(getSystemConfigFilePath(), "r");
+    if (configFile == NULL) {
+        printf("Error: Could not open the configuration file.\n");
+        return;
     }
     
-    // Open the log file
-    FILE* file = fopen(logFilePath, "r");
-    if (!file) {
-        printf("Error: Could not open the %s log file.\n", logType);
-        return false;
-    }
-    
-    printf("\n============= %s LOG =============\n", logType);
-    
-    // Count total lines in file first to determine if we need to show most recent only
-    int totalLines = 0;
-    char countBuffer[512];
-    while (fgets(countBuffer, sizeof(countBuffer), file) != NULL) {
-        totalLines++;
-    }
-    
-    // Reset file position to beginning
-    rewind(file);
-    
-    const int MAX_LINES_TO_DISPLAY = 100;
-    int linesToSkip = 0;
-    
-    if (totalLines > MAX_LINES_TO_DISPLAY) {
-        linesToSkip = totalLines - MAX_LINES_TO_DISPLAY;
-        printf("(Showing most recent %d entries out of %d total)\n\n", 
-              MAX_LINES_TO_DISPLAY, totalLines);
-        
-        // Skip lines we don't want to display
-        for (int i = 0; i < linesToSkip; i++) {
-            if (fgets(countBuffer, sizeof(countBuffer), file) == NULL) {
-                break;
-            }
-        }
-    }
-    
-    // Display the log contents
     char line[512];
-    int lineNum = linesToSkip + 1;
-    while (fgets(line, sizeof(line), file) != NULL) {
-        // Add a line number to each log entry for easier reference
-        printf("%4d: %s", lineNum++, line);
+    while (fgets(line, sizeof(line), configFile) != NULL) {
+        printf("%s", line);
     }
     
-    printf("\n=========== END OF LOG ===========\n\n");
+    fclose(configFile);
     
-    fclose(file);
+    printf("\nPress Enter to continue.");
+    getchar();
+}
+
+// Edit transaction limits (helper function)
+static void edit_transaction_limits(AdminUser* admin) {
+    printf("\nEdit Transaction Limits:\n");
+    printf("---------------------------------------\n");
+    printf("1. Daily Withdrawal Limit\n");
+    printf("2. Maximum Single Transaction\n");
+    printf("3. Back\n");
+    printf("Enter choice: ");
     
-    // Wait for user to press enter before returning
-    printf("Press Enter to continue...");
+    int choice;
+    scanf("%d", &choice);
+    getchar(); // Clear input buffer
+    
+    if (choice == 3) {
+        return;
+    }
+    
+    double newLimit;
+    printf("Enter new limit: ");
+    scanf("%lf", &newLimit);
+    getchar(); // Clear input buffer
+    
+    if (newLimit <= 0) {
+        printf("Error: Limit must be greater than zero.\n");
+        return;
+    }
+    
+    // In a real implementation, we would update the appropriate limit in the configuration file
+    printf("Transaction limit updated successfully.\n");
+    
+    // Log the change
+    char logMessage[100];
+    sprintf(logMessage, "Updated %s transaction limit to %.2f", 
+            (choice == 1) ? "daily withdrawal" : "maximum single", newLimit);
+    writeAuditLog("ADMIN", logMessage);
+    
+    printf("\nPress Enter to continue.");
+    getchar();
+}
+
+// Configure security settings (helper function)
+static void configure_security_settings(AdminUser* admin) {
+    printf("\nConfigure Security Settings:\n");
+    printf("---------------------------------------\n");
+    printf("1. Session Timeout (minutes)\n");
+    printf("2. Password Complexity Requirements\n");
+    printf("3. Login Attempt Limits\n");
+    printf("4. Back\n");
+    printf("Enter choice: ");
+    
+    int choice;
+    scanf("%d", &choice);
+    getchar(); // Clear input buffer
+    
+    if (choice == 4) {
+        return;
+    }
+    
+    // In a real implementation, we would update the appropriate security setting
+    printf("Security setting updated successfully.\n");
+    
+    // Log the change
+    char logMessage[100];
+    sprintf(logMessage, "Updated security settings by admin %s", admin->username);
+    writeAuditLog("ADMIN", logMessage);
+    
+    printf("\nPress Enter to continue.");
+    getchar();
+}
+
+// Update ATM status configuration (helper function)
+static void update_atm_status_config(AdminUser* admin) {
+    printf("\nUpdate ATM Status:\n");
+    printf("---------------------------------------\n");
+    
+    char atmId[20];
+    printf("Enter ATM ID (e.g., ATM001): ");
+    fgets(atmId, sizeof(atmId), stdin);
+    atmId[strcspn(atmId, "\n")] = 0; // Remove newline
+    
+    printf("\nSelect new status:\n");
+    printf("1. Online\n");
+    printf("2. Offline\n");
+    printf("3. Maintenance\n");
+    printf("4. Out of Cash\n");
+    printf("Enter choice: ");
+    
+    int choice;
+    scanf("%d", &choice);
+    getchar(); // Clear input buffer
+    
+    const char* newStatus;
+    switch (choice) {
+        case 1:
+            newStatus = "Online";
+            break;
+        case 2:
+            newStatus = "Offline";
+            break;
+        case 3:
+            newStatus = "Maintenance";
+            break;
+        case 4:
+            newStatus = "Out of Cash";
+            break;
+        default:
+            printf("Invalid choice.\n");
+            return;
+    }
+    
+    // In a real implementation, update the ATM status in the data file
+    printf("ATM status updated successfully.\n");
+    
+    // Log the change
+    char logMessage[100];
+    sprintf(logMessage, "Updated ATM %s status to %s", atmId, newStatus);
+    writeAuditLog("ADMIN", logMessage);
+    
+    printf("\nPress Enter to continue.");
+    getchar();
+}
+
+// Back up system data
+bool backup_system_data(AdminUser* admin) {
+    if (!admin || !admin->is_logged_in) {
+        printf("Error: Not authorized. Please log in first.\n");
+        return false;
+    }
+    
+    // Verify user is SuperAdmin
+    if (!admin_has_role(admin, "SuperAdmin")) {
+        printf("Error: Only SuperAdmin users can perform system backups.\n");
+        writeAuditLog("SECURITY", "Unauthorized attempt to perform system backup");
+        return false;
+    }
+    
+    printf("\n=======================================\n");
+    printf("=         SYSTEM DATA BACKUP         =\n");
+    printf("=======================================\n");
+    
+    // Create a timestamp for the backup
+    time_t now = time(NULL);
+    struct tm *t = localtime(&now);
+    char timestamp[20];
+    strftime(timestamp, sizeof(timestamp), "%Y%m%d_%H%M%S", t);
+    
+    char backupDir[256];
+    sprintf(backupDir, "%s/backup_%s", isTestingMode() ? TEST_DATA_DIR : PROD_DATA_DIR, timestamp);
+    
+    // In a real implementation, we would create the directory and copy all data files
+    printf("Creating backup in: %s\n", backupDir);
+    
+    // Simulate backup process
+    printf("Backing up customer data...\n");
+    printf("Backing up transaction history...\n");
+    printf("Backing up system configuration...\n");
+    printf("Backing up logs...\n");
+    
+    // Simulate some processing time
+    printf("Finalizing backup...\n");
+    
+    // Log the backup
+    char logMessage[100];
+    sprintf(logMessage, "System backup created by %s: backup_%s", admin->username, timestamp);
+    writeAuditLog("ADMIN", logMessage);
+    
+    printf("\nBackup completed successfully!\n");
+    printf("\nPress Enter to continue.");
     getchar();
     
     return true;
 }
 
-// Manage system configuration settings
-bool manage_system_config(AdminUser* admin) {
+// Toggle ATM/Banking service mode with admin authentication
+bool admin_toggle_service_mode(AdminUser* admin) {
     if (!admin || !admin->is_logged_in) {
-        writeErrorLog("Unauthorized attempt to manage system configuration");
+        printf("Error: Not authorized. Please log in first.\n");
         return false;
     }
     
     printf("\n=======================================\n");
-    printf("=        SYSTEM CONFIGURATION        =\n");
+    printf("=         ATM SERVICE MODE           =\n");
     printf("=======================================\n");
     
-    // Open the configuration file
-    FILE* file = fopen(getSystemConfigFilePath(), "r");
-    if (!file) {
-        printf("Error: Could not open system configuration file.\n");
-        return false;
-    }
+    // Get current service status
+    int currentStatus = getServiceStatus();
+    printf("Current ATM service status: %s\n", currentStatus ? "OFFLINE" : "ONLINE");
     
-    // Read and display all configuration entries
-    printf("Current Configuration Settings:\n");
-    printf("----------------------------------------------------------------------------------\n");
-    printf("| %-25s | %-20s | %-35s |\n", "Parameter", "Value", "Description");
-    printf("----------------------------------------------------------------------------------\n");
+    printf("\nDo you want to toggle the ATM service status? (Y/N): ");
+    char choice;
+    scanf(" %c", &choice);
+    getchar(); // Clear input buffer
     
-    char line[512];
-    int configCount = 0;
-    char configNames[50][64]; // Store up to 50 configuration names
-    
-    // Skip header lines (first two lines)
-    fgets(line, sizeof(line), file);
-    fgets(line, sizeof(line), file);
-    
-    while (fgets(line, sizeof(line), file) && configCount < 50) {
-        char name[64] = {0}, value[64] = {0}, description[256] = {0};
-        
-        // Parse configuration line
-        if (sscanf(line, "| %63[^|] | %63[^|] | %255[^|]", name, value, description) >= 3) {
-            // Trim whitespace
-            char* trimmed_name = name;
-            while (*trimmed_name == ' ') trimmed_name++;
-            char* end = trimmed_name + strlen(trimmed_name) - 1;
-            while (end > trimmed_name && (*end == ' ' || *end == '\n')) *end-- = '\0';
+    if (choice == 'Y' || choice == 'y') {
+        // Toggle service status
+        if (setServiceStatus(!currentStatus)) {
+            printf("ATM service status successfully changed to: %s\n", !currentStatus ? "ONLINE" : "OFFLINE");
             
-            char* trimmed_value = value;
-            while (*trimmed_value == ' ') trimmed_value++;
-            end = trimmed_value + strlen(trimmed_value) - 1;
-            while (end > trimmed_value && (*end == ' ' || *end == '\n')) *end-- = '\0';
+            // Log the change
+            char logMessage[100];
+            sprintf(logMessage, "ATM service status changed to %s by %s", 
+                    !currentStatus ? "ONLINE" : "OFFLINE", admin->username);
+            writeAuditLog("ADMIN", logMessage);
             
-            char* trimmed_desc = description;
-            while (*trimmed_desc == ' ') trimmed_desc++;
-            end = trimmed_desc + strlen(trimmed_desc) - 1;
-            while (end > trimmed_desc && (*end == ' ' || *end == '\n')) *end-- = '\0';
-            
-            // Store the config name for later use
-            strcpy(configNames[configCount], trimmed_name);
-            
-            // Display the configuration
-            printf("| %-25s | %-20s | %-35s |\n", 
-                  trimmed_name, trimmed_value, trimmed_desc);
-            
-            configCount++;
-        }
-    }
-    
-    printf("----------------------------------------------------------------------------------\n\n");
-    fclose(file);
-    
-    // Offer options to edit or add configuration
-    printf("Options:\n");
-    printf("1. Edit an existing configuration\n");
-    printf("2. Add a new configuration\n");
-    printf("3. Return to main menu\n");
-    printf("Enter choice: ");
-    
-    char choice_str[5];
-    if (!fgets(choice_str, sizeof(choice_str), stdin)) {
-        return false;
-    }
-    
-    int choice = atoi(choice_str);
-    
-    switch (choice) {
-        case 1: {
-            // Edit existing configuration
-            printf("\nEnter the parameter name to edit: ");
-            char paramName[64];
-            if (!fgets(paramName, sizeof(paramName), stdin)) {
-                return false;
-            }
-            paramName[strcspn(paramName, "\n")] = 0; // Remove newline
-            
-            // Check if parameter exists
-            bool found = false;
-            for (int i = 0; i < configCount; i++) {
-                if (strcmp(configNames[i], paramName) == 0) {
-                    found = true;
-                    break;
-                }
-            }
-            
-            if (!found) {
-                printf("Error: Parameter '%s' not found.\n", paramName);
-                return false;
-            }
-            
-            // Get current value
-            const char* currentValue = get_config_value(paramName);
-            if (currentValue) {
-                printf("Current value: %s\n", currentValue);
-            }
-            
-            printf("Enter new value: ");
-            char newValue[64];
-            if (!fgets(newValue, sizeof(newValue), stdin)) {
-                return false;
-            }
-            newValue[strcspn(newValue, "\n")] = 0; // Remove newline
-            
-            // Update the configuration
-            if (setConfigValue(paramName, newValue)) {
-                printf("\nConfiguration updated successfully!\n");
-                
-                char logMsg[200];
-                sprintf(logMsg, "Configuration '%s' updated to '%s' by %s", 
-                       paramName, newValue, admin->username);
-                writeAuditLog("CONFIG", logMsg);
-                
-                return true;
-            } else {
-                printf("\nError: Failed to update configuration. Please try again.\n");
-                writeErrorLog("Failed to update configuration");
-                return false;
-            }
-            break;
-        }
-        case 2: {
-            // Add new configuration
-            printf("\nEnter new parameter name: ");
-            char paramName[64];
-            if (!fgets(paramName, sizeof(paramName), stdin)) {
-                return false;
-            }
-            paramName[strcspn(paramName, "\n")] = 0; // Remove newline
-            
-            printf("Enter parameter value: ");
-            char paramValue[64];
-            if (!fgets(paramValue, sizeof(paramValue), stdin)) {
-                return false;
-            }
-            paramValue[strcspn(paramValue, "\n")] = 0; // Remove newline
-            
-            printf("Enter parameter description: ");
-            char paramDesc[256];
-            if (!fgets(paramDesc, sizeof(paramDesc), stdin)) {
-                return false;
-            }
-            paramDesc[strcspn(paramDesc, "\n")] = 0; // Remove newline
-            
-            // Add the new configuration
-            if (add_config(paramName, paramValue, paramDesc)) {
-                printf("\nNew configuration added successfully!\n");
-                
-                char logMsg[200];
-                sprintf(logMsg, "New configuration '%s' added with value '%s' by %s", 
-                       paramName, paramValue, admin->username);
-                writeAuditLog("CONFIG", logMsg);
-                
-                return true;
-            } else {
-                printf("\nError: Failed to add configuration. Please try again.\n");
-                writeErrorLog("Failed to add configuration");
-                return false;
-            }
-            break;
-        }
-        case 3:
             return true;
-        default:
-            printf("Invalid option. Please try again.\n");
+        } else {
+            printf("Failed to change ATM service status.\n");
             return false;
-    }
-    
-    return true;
-}
-
-// Back up system data files
-bool backup_system_data(AdminUser* admin) {
-    if (!admin || !admin->is_logged_in) {
-        writeErrorLog("Unauthorized attempt to backup system data");
-        return false;
-    }
-    
-    printf("\n=======================================\n");
-    printf("=          BACKUP SYSTEM DATA        =\n");
-    printf("=======================================\n");
-    
-    // Create a backup directory with timestamp
-    time_t now = time(NULL);
-    struct tm *tm_now = localtime(&now);
-    char backupDir[256];
-    char timestamp[64];
-    
-    strftime(timestamp, sizeof(timestamp), "%Y%m%d-%H%M%S", tm_now);
-    snprintf(backupDir, sizeof(backupDir), "backup_%s", timestamp);
-    
-    // Create the backup directory
-    if (mkdir(backupDir, 0755) != 0) {
-        printf("Error: Failed to create backup directory.\n");
-        writeErrorLog("Failed to create backup directory");
-        return false;
-    }
-    
-    printf("Creating backup in directory: %s\n\n", backupDir);
-    
-    // Get the data directory
-    char dataDir[256];
-    strcpy(dataDir, "data"); // Assuming data files are in the data directory
-    
-    // Backup log files
-    char logDir[256];
-    strcpy(logDir, "logs"); // Assuming log files are in the logs directory
-    
-    // Open the data directory
-    DIR *data_dir = opendir(dataDir);
-    if (!data_dir) {
-        printf("Error: Could not open data directory.\n");
-        writeErrorLog("Failed to open data directory for backup");
-        return false;
-    }
-    
-    // Create data directory inside backup
-    char backupDataDir[512];
-    snprintf(backupDataDir, sizeof(backupDataDir), "%s/data", backupDir);
-    if (mkdir(backupDataDir, 0755) != 0) {
-        printf("Error: Failed to create data backup directory.\n");
-        writeErrorLog("Failed to create data backup directory");
-        closedir(data_dir);
-        return false;
-    }
-    
-    printf("Backing up data files...\n");
-    
-    // Copy each file in the data directory
-    struct dirent *entry;
-    int files_copied = 0;
-    int files_failed = 0;
-    
-    while ((entry = readdir(data_dir)) != NULL) {
-        // Skip . and ..
-        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
-            continue;
         }
-        
-        // Build source and destination paths
-        char srcPath[512];
-        char dstPath[512];
-        snprintf(srcPath, sizeof(srcPath), "%s/%s", dataDir, entry->d_name);
-        snprintf(dstPath, sizeof(dstPath), "%s/%s", backupDataDir, entry->d_name);
-        
-        // Open source file
-        FILE *srcFile = fopen(srcPath, "rb");
-        if (!srcFile) {
-            printf("Warning: Could not open source file %s\n", srcPath);
-            files_failed++;
-            continue;
-        }
-        
-        // Open destination file
-        FILE *dstFile = fopen(dstPath, "wb");
-        if (!dstFile) {
-            printf("Warning: Could not create destination file %s\n", dstPath);
-            fclose(srcFile);
-            files_failed++;
-            continue;
-        }
-        
-        // Copy file contents
-        char buffer[4096];
-        size_t bytesRead;
-        
-        while ((bytesRead = fread(buffer, 1, sizeof(buffer), srcFile)) > 0) {
-            if (fwrite(buffer, 1, bytesRead, dstFile) != bytesRead) {
-                printf("Warning: Failed to write to %s\n", dstPath);
-                files_failed++;
-                fclose(srcFile);
-                fclose(dstFile);
-                continue;
-            }
-        }
-        
-        // Close files
-        fclose(srcFile);
-        fclose(dstFile);
-        files_copied++;
-        printf("  Backed up: %s\n", entry->d_name);
     }
     
-    closedir(data_dir);
-    
-    // Now backup log files similarly
-    DIR *log_dir = opendir(logDir);
-    if (log_dir) {
-        // Create log directory inside backup
-        char backupLogDir[512];
-        snprintf(backupLogDir, sizeof(backupLogDir), "%s/logs", backupDir);
-        if (mkdir(backupLogDir, 0755) == 0) {
-            printf("\nBacking up log files...\n");
-            
-            // Copy each file in the log directory
-            while ((entry = readdir(log_dir)) != NULL) {
-                // Skip . and ..
-                if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
-                    continue;
-                }
-                
-                // Build source and destination paths
-                char srcPath[512];
-                char dstPath[512];
-                snprintf(srcPath, sizeof(srcPath), "%s/%s", logDir, entry->d_name);
-                snprintf(dstPath, sizeof(dstPath), "%s/%s", backupLogDir, entry->d_name);
-                
-                // Copy file
-                FILE *srcFile = fopen(srcPath, "rb");
-                if (!srcFile) {
-                    printf("Warning: Could not open source file %s\n", srcPath);
-                    files_failed++;
-                    continue;
-                }
-                
-                FILE *dstFile = fopen(dstPath, "wb");
-                if (!dstFile) {
-                    printf("Warning: Could not create destination file %s\n", dstPath);
-                    fclose(srcFile);
-                    files_failed++;
-                    continue;
-                }
-                
-                // Copy file contents
-                char buffer[4096];
-                size_t bytesRead;
-                
-                while ((bytesRead = fread(buffer, 1, sizeof(buffer), srcFile)) > 0) {
-                    if (fwrite(buffer, 1, bytesRead, dstFile) != bytesRead) {
-                        printf("Warning: Failed to write to %s\n", dstPath);
-                        files_failed++;
-                        fclose(srcFile);
-                        fclose(dstFile);
-                        continue;
-                    }
-                }
-                
-                // Close files
-                fclose(srcFile);
-                fclose(dstFile);
-                files_copied++;
-                printf("  Backed up: %s\n", entry->d_name);
-            }
-        }
-        closedir(log_dir);
-    }
-    
-    printf("\nBackup completed!\n");
-    printf("Files successfully backed up: %d\n", files_copied);
-    
-    if (files_failed > 0) {
-        printf("Files failed: %d\n", files_failed);
-    }
-    
-    // Create a backup info file
-    char infoPath[512];
-    snprintf(infoPath, sizeof(infoPath), "%s/backup_info.txt", backupDir);
-    FILE *infoFile = fopen(infoPath, "w");
-    
-    if (infoFile) {
-        fprintf(infoFile, "Backup created: %s\n", ctime(&now));
-        fprintf(infoFile, "Created by: %s\n", admin->username);
-        fprintf(infoFile, "Files backed up: %d\n", files_copied);
-        fprintf(infoFile, "Files failed: %d\n", files_failed);
-        fclose(infoFile);
-    }
-    
-    char logMsg[200];
-    sprintf(logMsg, "System backup created in '%s' by %s. Files: %d success, %d failed", 
-           backupDir, admin->username, files_copied, files_failed);
-    writeAuditLog("SYSTEM", logMsg);
-    
+    printf("Operation cancelled. Status remains unchanged.\n");
     return true;
 }

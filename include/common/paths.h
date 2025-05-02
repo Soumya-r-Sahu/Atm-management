@@ -25,6 +25,10 @@ void setTestingMode(int isTest);
 #define PROD_ADMIN_CREDENTIALS_FILE "data/admin_credentials.txt"
 #define TEST_ADMIN_CREDENTIALS_FILE "data/test/admin_credentials.txt"
 
+// Status file for ATM service status
+#define PROD_STATUS_FILE "data/status.txt"
+#define TEST_STATUS_FILE "data/test/status.txt"
+
 // Log files
 #define PROD_ERROR_LOG_FILE "logs/error.log"
 #define TEST_ERROR_LOG_FILE "logs/test/error.log"
@@ -50,6 +54,7 @@ const char* getSystemConfigFilePath();
 const char* getSecurityLogsFilePath();
 const char* getPinAttemptsFilePath();
 const char* getCardLockoutFilePath();
+const char* getStatusFilePath();
 
 // Get log paths with mode detection
 const char* getAuditLogFilePath();

@@ -143,10 +143,10 @@ bool validateCardWithHash(int cardNumber, const char* pinHash) {
 }
 
 // Validate recipient account
-bool validateRecipientAccount(int cardNumber, const char* accountID, const char* branchCode) {
+bool validateRecipientAccount(int recipientCard) {
     // In a real system, this would check if the recipient account exists
     // Here we'll just check if the card exists
-    return doesCardExist(cardNumber);
+    return doesCardExist(recipientCard);
 }
 
 // Update PIN
@@ -361,15 +361,15 @@ bool getCardHolderPhone(int cardNumber, char* phone, size_t phoneSize) {
 }
 
 // Fetch account balance
-float fetchBalance(int cardNumber) {
+bool fetchBalance(int cardNumber, float* balance) {
     FILE* file = fopen(getAccountingFilePath(), "r");
     if (!file) {
         write_error_log("Failed to open accounting file for reading");
-        return -1.0f;
+        return false;
     }
     
     char line[256];
-    float balance = -1.0f;
+    bool found = false;
     
     // Skip header lines
     fgets(line, sizeof(line), file);
@@ -381,14 +381,15 @@ float fetchBalance(int cardNumber) {
         float stored_balance;
         if (sscanf(line, "%*s | %d | %f", &stored_card_number, &stored_balance) >= 2) {
             if (stored_card_number == cardNumber) {
-                balance = stored_balance;
+                *balance = stored_balance;
+                found = true;
                 break;
             }
         }
     }
     
     fclose(file);
-    return balance;
+    return found;
 }
 
 // Update account balance
@@ -663,11 +664,11 @@ bool unblockCard(int cardNumber) {
 }
 
 // Log transaction
-void logTransaction(int cardNumber, TransactionType type, float amount, bool success) {
+bool logTransaction(int cardNumber, const char* transactionType, float amount, bool success) {
     FILE* file = fopen(getTransactionsLogFilePath(), "a");
     if (!file) {
         write_error_log("Failed to open transaction log file");
-        return;
+        return false;
     }
     
     // Get current timestamp
@@ -676,33 +677,10 @@ void logTransaction(int cardNumber, TransactionType type, float amount, bool suc
     char timestamp[20];
     strftime(timestamp, sizeof(timestamp), "%Y-%m-%d %H:%M:%S", tm_now);
     
-    // Get transaction type string
-    const char* type_str;
-    switch (type) {
-        case TRANSACTION_BALANCE:
-            type_str = "Balance";
-            break;
-        case TRANSACTION_WITHDRAWAL:
-            type_str = "Withdrawal";
-            break;
-        case TRANSACTION_DEPOSIT:
-            type_str = "Deposit";
-            break;
-        case TRANSACTION_TRANSFER:
-            type_str = "Transfer";
-            break;
-        case TRANSACTION_PIN_CHANGE:
-            type_str = "PIN Change";
-            break;
-        case TRANSACTION_MINI_STATEMENT:
-            type_str = "Mini Statement";
-            break;
-        default:
-            type_str = "Other";
-    }
-    
     // Log the transaction
     fprintf(file, "%s | %d | %s | %.2f | %s\n",
-            timestamp, cardNumber, type_str, amount, success ? "Success" : "Failed");
+            timestamp, cardNumber, transactionType, amount, success ? "Success" : "Failed");
     fclose(file);
+    
+    return true;
 }

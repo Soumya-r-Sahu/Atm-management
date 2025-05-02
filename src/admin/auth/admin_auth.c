@@ -444,3 +444,102 @@ bool update_admin_status(AdminUser* admin, const char* target_username, bool sta
     
     return true;
 }
+
+// Check if a username already exists in the admin database
+bool admin_username_exists(const char* username) {
+    if (!username) {
+        return false;
+    }
+    
+    FILE* file = fopen(getAdminCredentialsFilePath(), "r");
+    if (!file) {
+        write_error_log("Failed to open admin credentials file");
+        return false;
+    }
+    
+    char line[256];
+    bool found = false;
+    
+    // Skip header lines (first two lines)
+    fgets(line, sizeof(line), file);
+    fgets(line, sizeof(line), file);
+    
+    // Process data lines
+    while (fgets(line, sizeof(line), file)) {
+        char admin_username[50];
+        
+        // Extract username from line
+        if (sscanf(line, "| %s |", admin_username) >= 1) {
+            if (strcmp(admin_username, username) == 0) {
+                found = true;
+                break;
+            }
+        }
+    }
+    
+    fclose(file);
+    return found;
+}
+
+// Create a new admin account with specified roles
+bool create_admin_account(AdminUser* current_admin, const char* new_username, 
+                         const char* new_password, const char* roles[], int num_roles) {
+    // Validation checks
+    if (!current_admin || !new_username || !new_password || !roles || num_roles <= 0) {
+        write_error_log("Invalid parameters for create_admin_account");
+        return false;
+    }
+    
+    // Check if current admin is logged in and has SuperAdmin role
+    if (!current_admin->is_logged_in || !admin_has_role(current_admin, "SuperAdmin")) {
+        char log_msg[150];
+        sprintf(log_msg, "Unauthorized attempt to create admin account by %s", current_admin->username);
+        write_audit_log("SECURITY", log_msg);
+        return false;
+    }
+    
+    // Check if username already exists
+    if (admin_username_exists(new_username)) {
+        write_error_log("Admin username already exists");
+        return false;
+    }
+    
+    // Create hash of the new password
+    char* password_hash = create_salted_hash(new_password, NULL);
+    if (!password_hash) {
+        write_error_log("Failed to create hash for new admin password");
+        return false;
+    }
+    
+    // Combine roles into a comma-separated string
+    char roles_str[256] = "";
+    for (int i = 0; i < num_roles; i++) {
+        strcat(roles_str, roles[i]);
+        if (i < num_roles - 1) {
+            strcat(roles_str, ",");
+        }
+    }
+    
+    // Open the admin credentials file for appending
+    FILE* file = fopen(getAdminCredentialsFilePath(), "a");
+    if (!file) {
+        write_error_log("Failed to open admin credentials file for appending");
+        free(password_hash);
+        return false;
+    }
+    
+    // Write the new admin record
+    fprintf(file, "| %s | %s | %s | active |\n", 
+           new_username, password_hash, roles_str);
+    
+    fclose(file);
+    free(password_hash);
+    
+    // Log the successful creation
+    char log_msg[200];
+    sprintf(log_msg, "New admin account created: %s with roles: %s", 
+            new_username, roles_str);
+    write_audit_log("ADMIN", log_msg);
+    
+    return true;
+}

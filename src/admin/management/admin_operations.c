@@ -1,9 +1,9 @@
-#include "../../include/admin/admin_operations.h"
-#include "../../include/admin/admin_auth.h"
-#include "../../utils/logger.h"
-#include "../../database/database.h"
-#include "../../database/card_account_management.h"  // Added include for card management functions
-#include "../../common/paths.h"
+#include "../../../include/admin/admin_operations.h"
+#include "../../../include/admin/admin_auth.h"
+#include "../../../include/common/utils/logger.h"
+#include "../../../include/common/database/database.h"
+#include "../../../include/common/database/card_account_management.h"
+#include "../../../include/common/paths.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -15,10 +15,8 @@
 
 // Forward declarations for helper functions
 int createCustomerAccount(const char *accountHolderName, int *cardNumber, int *pin);
-int isCardNumberUnique(int cardNumber);
 int generateUniqueCardNumber(void);
 int generateRandomPin(void);
-int createNewAccount(const char *accountHolderName, int cardNumber, int pin);
 
 // Create a new account
 int create_account(void) {
@@ -105,8 +103,24 @@ int createCustomerAccount(const char *accountHolderName, int *cardNumber, int *p
             accountHolderName, *cardNumber);
     writeAuditLog("ADMIN", logMsg);
     
-    // Create the account using the admin_db function
-    int result = createNewAccount(accountHolderName, *cardNumber, *pin);
+    // Create the account using database function
+    // Using default values for optional parameters
+    char pinStr[10];
+    sprintf(pinStr, "%04d", *pin);
+    char cardStr[20];
+    sprintf(cardStr, "%d", *cardNumber);
+    
+    // Call the database function with required parameters
+    int result = createNewAccount(
+        accountHolderName,         // name
+        "Address not provided",    // default address
+        "Phone not provided",      // default phone
+        "Email not provided",      // default email
+        cardStr,                   // card number as string
+        1000.0,                    // initial balance
+        cardNumber,                // card number pointer for output
+        pin                        // pin pointer for output
+    );
     
     if (result) {
         sprintf(logMsg, "Successfully created account for %s", accountHolderName);

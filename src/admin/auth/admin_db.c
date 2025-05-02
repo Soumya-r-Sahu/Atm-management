@@ -1,5 +1,5 @@
 #include "../../../include/admin/admin_auth.h"
-#include "admin_db.h"
+#include "../../../include/admin/auth/admin_db.h"
 #include "../../../include/common/utils/logger.h"
 #include "../../../include/common/utils/hash_utils.h"
 #include "../../../include/common/paths.h"
@@ -19,10 +19,7 @@ static const char* getLocalAdminCredentialsFilePath() {
     return isTestingMode() ? TEST_ADMIN_CREDENTIALS_FILE : PROD_ADMIN_CREDENTIALS_FILE;
 }
 
-// Use the implementation from paths.h instead of redefining
-const char* getStatusFilePath() {
-    return isTestingMode() ? TEST_DATA_DIR "/status.txt" : PROD_DATA_DIR "/status.txt";
-}
+// Remove duplicate getStatusFilePath function - we'll use the one from path_manager.c
 
 // Load admin credentials from file
 int loadAdminCredentials(char *adminId, char *adminPass) {
@@ -540,68 +537,5 @@ int setServiceStatus(int isOutOfService) {
     return 1; // Status updated successfully
 }
 
-// Add authenticate_admin implementation at the end of the file
-
-AuthStatus authenticate_admin(const char* username, const char* password) {
-    // Check for admin credentials
-    FILE* file = fopen(getAdminCredentialsFilePath(), "r");
-    if (!file) {
-        writeErrorLog("Failed to open admin credentials file");
-        return AUTH_SYSTEM_ERROR;
-    }
-    
-    char line[256];
-    int found = 0;
-    
-    // Skip header if present
-    if (fgets(line, sizeof(line), file) != NULL && strstr(line, "Admin ID") != NULL) {
-        // This was a header line, continue to next line
-    }
-    
-    // Look for matching admin username and password
-    while (fgets(line, sizeof(line), file)) {
-        char storedUsername[50] = {0};
-        char storedPassword[50] = {0};
-        char role[20] = {0};
-        
-        if (sscanf(line, "%49s | %49s | %19s", storedUsername, storedPassword, role) >= 2) {
-            if (strcmp(storedUsername, username) == 0) {
-                // Found matching username
-                found = 1;
-                
-                // Compare passwords (in a real system, use hashed passwords)
-                if (strcmp(storedPassword, password) == 0) {
-                    fclose(file);
-                    
-                    // Log successful authentication
-                    char logMsg[100];
-                    sprintf(logMsg, "Admin user %s authenticated successfully", username);
-                    writeAuditLog("ADMIN", logMsg);
-                    
-                    return AUTH_SUCCESS;
-                } else {
-                    // Password mismatch
-                    fclose(file);
-                    
-                    // Log failed authentication
-                    char logMsg[100];
-                    sprintf(logMsg, "Failed authentication attempt for admin user %s", username);
-                    writeAuditLog("SECURITY", logMsg);
-                    
-                    return AUTH_INVALID_CREDENTIALS;
-                }
-            }
-        }
-    }
-    
-    fclose(file);
-    
-    if (!found) {
-        // Username not found
-        char logMsg[100];
-        sprintf(logMsg, "Authentication attempt with unknown admin username: %s", username);
-        writeAuditLog("SECURITY", logMsg);
-    }
-    
-    return AUTH_INVALID_CREDENTIALS;
-}
+// The authenticate_admin function is already defined in admin_auth.c
+// Removing duplicate definition from this file to avoid linking errors

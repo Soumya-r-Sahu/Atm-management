@@ -8,6 +8,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <stdarg.h>  /* Added for va_list, va_start, va_end */
 #include <upi_transaction/upi_transaction.h>
 #include <common/utils/file_utils.h>
 #include <common/utils/string_utils.h>
@@ -16,6 +17,7 @@
 #include <common/database/database.h>
 #include <common/paths.h>
 #include <common/constants.h>
+#include <common/utils/hash_utils.h>
 
 #define UPI_DATA_FILE "data/virtual_wallet.txt"
 #define UPI_TRANSACTION_FILE "data/upi_transactions.txt"
@@ -23,6 +25,50 @@
 #define UPI_PIN_LENGTH 6
 #define UPI_VPA_MAX_LENGTH 50
 #define UPI_DAILY_LIMIT 100000.0
+
+/* Forward declarations of local functions */
+bool get_account_holder_name(const char* account_number, char* name, size_t size);
+bool save_upi_pin(const char* vpa, const char* pin_hash);
+bool get_upi_pin_hash(const char* vpa, char* hash, size_t size);
+int generate_unique_id(void);
+bool get_account_balance(const char* account_number, double* balance);
+bool debit_account(const char* account_number, double amount, double* new_balance);
+bool credit_account(const char* account_number, double amount, double* new_balance);
+
+// Custom logging function to handle formatted messages
+static void log_formatted_error(const char* format, ...) {
+    char buffer[256];
+    va_list args;
+    va_start(args, format);
+    vsnprintf(buffer, sizeof(buffer), format, args);
+    va_end(args);
+    writeErrorLog(buffer);
+}
+
+static void log_formatted_info(const char* format, ...) {
+    char buffer[256];
+    va_list args;
+    va_start(args, format);
+    vsnprintf(buffer, sizeof(buffer), format, args);
+    va_end(args);
+    writeInfoLog(buffer);
+}
+
+// Replace the macros with these functions
+#define log_error log_formatted_error
+#define log_info log_formatted_info
+
+// Map hash functions to the hash utilities
+#define compute_hash(input, output, size) { \
+    char* temp = sha256_hash(input); \
+    if (temp) { \
+        strncpy(output, temp, size-1); \
+        output[size-1] = '\0'; \
+        free(temp); \
+    } else { \
+        output[0] = '\0'; \
+    } \
+}
 
 // Local function prototypes
 static bool load_vpa_details(const char* vpa, UpiVirtualAddress* vpa_details);
@@ -692,7 +738,7 @@ bool debit_account(const char* account_number, double amount, double* new_balanc
     }
     
     // In a real implementation, this would update the database
-    *new_balance = 10000.0 - amount;  // Dummy calculation
+    *new_balance = 10000.0 - amount;  // Dummy implementation
     return true;
 }
 
@@ -702,6 +748,79 @@ bool credit_account(const char* account_number, double amount, double* new_balan
     }
     
     // In a real implementation, this would update the database
-    *new_balance = 10000.0 + amount;  // Dummy calculation
+    *new_balance = 10000.0 + amount;  // Dummy implementation
     return true;
+}
+
+// Main function for the UPI system executable
+int main(int argc, char* argv[]) {
+    printf("UPI Transaction System Starting...\n");
+    
+    // Initialize the UPI system
+    if (!upi_init()) {
+        fprintf(stderr, "Failed to initialize UPI system\n");
+        return 1;
+    }
+    
+    printf("UPI Transaction System initialized successfully.\n");
+    printf("Run with appropriate command-line arguments to use specific functions.\n");
+    printf("Example: %s register <account_number> <vpa_prefix> <bank_code> <mobile> <pin>\n", argv[0]);
+    
+    // Simple command-line interface
+    if (argc > 1) {
+        if (strcmp(argv[1], "register") == 0 && argc >= 7) {
+            char vpa_out[UPI_VPA_MAX_LENGTH];
+            UpiStatus status = upi_register_vpa(
+                argv[2], // account number
+                argv[3], // vpa prefix
+                argv[4], // bank code
+                argv[5], // mobile
+                argv[6], // pin
+                vpa_out
+            );
+            
+            printf("Registration result: %s\n", 
+                  (status == UPI_SUCCESS) ? "SUCCESS" : "FAILED");
+                  
+            if (status == UPI_SUCCESS) {
+                printf("VPA created: %s\n", vpa_out);
+            }
+        }
+        else if (strcmp(argv[1], "balance") == 0 && argc >= 4) {
+            double balance;
+            UpiStatus status = upi_check_balance(
+                argv[2], // vpa
+                argv[3], // pin
+                &balance
+            );
+            
+            if (status == UPI_SUCCESS) {
+                printf("Current balance: %.2f\n", balance);
+            } else {
+                printf("Balance check failed: %d\n", status);
+            }
+        }
+        else if (strcmp(argv[1], "transfer") == 0 && argc >= 7) {
+            int transaction_id;
+            UpiStatus status = upi_transfer(
+                argv[2], // sender vpa
+                argv[3], // receiver vpa
+                atof(argv[4]), // amount
+                argv[5], // pin
+                argv[6], // remarks
+                &transaction_id
+            );
+            
+            if (status == UPI_SUCCESS) {
+                printf("Transfer successful, Transaction ID: %d\n", transaction_id);
+            } else {
+                printf("Transfer failed: %d\n", status);
+            }
+        }
+        else {
+            printf("Invalid command or insufficient arguments\n");
+        }
+    }
+    
+    return 0;
 }

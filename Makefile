@@ -22,10 +22,13 @@ ATM_SRCS = src/atm/atm_main.c \
 # Source files for Admin executable
 ADMIN_SRCS = src/admin/admin_main.c \
              src/admin/management/admin_operations.c \
+             src/admin/management/system/admin_system_manager.c \
              src/admin/ui/admin_menu.c \
              src/admin/auth/admin_auth.c \
              src/admin/auth/admin_db.c \
+             src/database/card_management.c \
              src/common/utils/logger.c \
+             src/common/utils/hash_utils.c \
              src/database/database.c \
              src/common/utils/path_manager.c
 
@@ -35,6 +38,7 @@ UPI_SRCS = src/upi_transaction/upi_transaction.c \
            src/common/utils/string_utils.c \
            src/common/security/hash_utils.c \
            src/common/utils/logger.c \
+           src/common/utils/path_manager.c \
            src/common/database/database.c
 
 # Object files
@@ -60,7 +64,7 @@ $(ADMIN_EXEC): $(ADMIN_OBJS)
 
 # Build the UPI executable
 $(UPI_EXEC): $(UPI_OBJS)
-	$(CC) $(CFLAGS) -o $@ $(UPI_OBJS) -lm -lc
+	$(CC) $(CFLAGS) -o $@ $(UPI_OBJS) -lm -lc -lcrypto -lssl
 
 # Clean up
 clean:

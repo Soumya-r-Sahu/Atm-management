@@ -179,7 +179,7 @@ bool is_virtual_transaction_limit_exceeded(const char* cardNumber, float amount)
     strftime(today, sizeof(today), "%Y-%m-%d", tm_now);
     
     // Open transaction log to check daily total
-    FILE* logFile = fopen(getTransactionLogFilePath(), "r");
+    FILE* logFile = fopen(getTransactionsLogFilePath(), "r");
     if (!logFile) {
         // If can't open log, assume safe transaction
         return false;

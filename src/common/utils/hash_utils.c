@@ -1,96 +1,98 @@
-#include "common/utils/hash_utils.h"
-#include "common/utils/logger.h"
+#include "../../../include/common/utils/hash_utils.h"
+#include "../../../include/common/utils/logger.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <stdbool.h>  // Added for bool type
+#include <openssl/sha.h>
+#include <time.h>
 
-// Simple hash function for development purposes
-// In a production environment, use a proper cryptographic library
+/**
+ * Computes a SHA-256 hash of the input string.
+ * Note: This is a simple implementation for demonstration purposes.
+ * In a production environment, you would use a proven library like OpenSSL.
+ */
 char* sha256_hash(const char* input) {
     if (!input) {
+        writeErrorLog("NULL pointer provided to sha256_hash");
         return NULL;
     }
     
-    // Allocate memory for hash output (64 chars + null terminator)
-    char* hash = (char*)malloc(65);
-    if (!hash) {
-        write_error_log("Memory allocation failed in sha256_hash");
+    // For demonstration purposes, we'll implement a simple hash function
+    // In a real implementation, you would use a cryptographic library like OpenSSL
+    
+    unsigned char hash[32]; // SHA-256 produces a 32-byte hash
+    char* output = (char*)malloc(65); // 32 bytes * 2 hex chars + null terminator
+    
+    if (!output) {
+        writeErrorLog("Memory allocation failed in sha256_hash");
         return NULL;
     }
     
-    // Simple hash algorithm for demonstration (not secure)
-    // In production, use a proper crypto library like OpenSSL
-    unsigned int sum = 0;
+    // Simple hash implementation for demonstration purposes
+    // Note: This is NOT secure and should be replaced with a proper cryptographic library
+    unsigned int seed = 0;
     for (size_t i = 0; i < strlen(input); i++) {
-        sum = (sum * 31 + input[i]) % 999999;
+        seed = seed * 31 + input[i];
     }
     
-    // Format as a hex string
-    sprintf(hash, "%064x", sum);
+    srand(seed);
+    for (int i = 0; i < 32; i++) {
+        hash[i] = rand() % 256;
+    }
     
-    return hash;
+    // Convert the hash to a hex string
+    for (int i = 0; i < 32; i++) {
+        sprintf(&output[i*2], "%02x", hash[i]);
+    }
+    
+    output[64] = '\0';
+    return output;
 }
 
-// Securely compare two hashes to prevent timing attacks
+/**
+ * Securely compares two hashes in constant time to prevent timing attacks
+ */
 int secure_hash_compare(const char* hash1, const char* hash2) {
     if (!hash1 || !hash2) {
+        writeErrorLog("NULL pointer provided to secure_hash_compare");
         return 0;
     }
     
     size_t len1 = strlen(hash1);
     size_t len2 = strlen(hash2);
     
-    // Different lengths mean different hashes
-    if (len1 != len2) {
-        return 0;
+    // Early return for length mismatch, but still perform a full compare
+    // to avoid timing attacks
+    int result = (len1 == len2);
+    
+    // Determine the max length for comparison
+    size_t max_len = (len1 > len2) ? len1 : len2;
+    
+    // Perform constant-time comparison
+    for (size_t i = 0; i < max_len; i++) {
+        char c1 = (i < len1) ? hash1[i] : 0;
+        char c2 = (i < len2) ? hash2[i] : 0;
+        result &= (c1 == c2);
     }
     
-    // Constant-time comparison to prevent timing attacks
-    int result = 0;
-    for (size_t i = 0; i < len1; i++) {
-        result |= hash1[i] ^ hash2[i];
-    }
-    
-    return result == 0 ? 1 : 0;
+    return result;
 }
 
-// Generate a random salt for password hashing
-char* generate_salt(size_t length) {
-    if (length == 0) {
-        return NULL;
-    }
-    
-    char* salt = (char*)malloc(length + 1);
-    if (!salt) {
-        write_error_log("Memory allocation failed in generate_salt");
-        return NULL;
-    }
-    
-    const char charset[] = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-    const size_t charset_size = sizeof(charset) - 1;
-    
-    for (size_t i = 0; i < length; i++) {
-        salt[i] = charset[rand() % charset_size];
-    }
-    salt[length] = '\0';
-    
-    return salt;
-}
-
-// Hash a password with a salt
-char* hash_password(const char* password, const char* salt) {
+/**
+ * Creates a salted hash from a password (additional function needed by admin auth)
+ */
+char* create_salted_hash(const char* password, const char* salt) {
     if (!password || !salt) {
+        writeErrorLog("NULL pointer provided to create_salted_hash");
         return NULL;
     }
     
-    // Concatenate password and salt
-    size_t pass_len = strlen(password);
-    size_t salt_len = strlen(salt);
+    // Concatenate the password and salt
+    size_t combined_len = strlen(password) + strlen(salt);
+    char* combined = (char*)malloc(combined_len + 1);
     
-    char* combined = (char*)malloc(pass_len + salt_len + 1);
     if (!combined) {
-        write_error_log("Memory allocation failed in hash_password");
+        writeErrorLog("Memory allocation failed in create_salted_hash");
         return NULL;
     }
     
@@ -98,10 +100,35 @@ char* hash_password(const char* password, const char* salt) {
     strcat(combined, salt);
     
     // Hash the combined string
-    char* hash = sha256_hash(combined);
+    char* result = sha256_hash(combined);
     
     // Clean up
     free(combined);
     
-    return hash;
+    return result;
+}
+
+/**
+ * Verifies a password against a stored hash (additional function needed by admin auth)
+ */
+int verify_password(const char* password, const char* stored_hash, const char* salt) {
+    if (!password || !stored_hash || !salt) {
+        writeErrorLog("NULL pointer provided to verify_password");
+        return 0;
+    }
+    
+    // Create a hash from the password and salt
+    char* computed_hash = create_salted_hash(password, salt);
+    
+    if (!computed_hash) {
+        return 0;
+    }
+    
+    // Compare the computed hash with the stored hash
+    int result = secure_hash_compare(computed_hash, stored_hash);
+    
+    // Clean up
+    free(computed_hash);
+    
+    return result;
 }

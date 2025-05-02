@@ -20,4 +20,10 @@ void show_admin_main_menu(AdminUser* admin);
  */
 void show_change_password_menu(AdminUser* admin);
 
+/**
+ * Show the create admin account menu for SuperAdmin users
+ * @param admin The authenticated admin user session (must be SuperAdmin)
+ */
+void show_create_admin_menu(AdminUser* admin);
+
 #endif // ADMIN_MENU_H

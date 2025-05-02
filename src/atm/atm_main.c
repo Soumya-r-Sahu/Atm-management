@@ -4,6 +4,8 @@
 #include "common/utils/logger.h"
 #include "common/config/config_manager.h"
 #include "common/database/database.h"  // Added for close_database() function
+#include "netbanking/netbanking.h"  // Added for netbanking features
+#include "upi_transaction/upi_transaction.h"  // Added for UPI features
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
@@ -54,39 +56,71 @@ int main(int argc, char** argv) {
                 // Show main menu and get user choice
                 int choice = show_main_menu(session);
                 
+                // Get user role to determine valid menu options
+                UserRole role = get_user_role(session->card_number);
+                int exit_option = (role == ROLE_BASIC) ? 7 : 
+                                  (role == ROLE_NETBANKING) ? 9 : 
+                                  (role == ROLE_PREMIUM) ? 11 : 12;
+                
                 // Handle user choice
-                switch (choice) {
-                    case 1: // Check Balance
-                        show_balance_screen(session);
-                        break;
-                        
-                    case 2: // Withdraw Cash
-                        show_withdrawal_menu(session);
-                        break;
-                        
-                    case 3: // Deposit Cash
-                        show_deposit_menu(session);
-                        break;
-                        
-                    case 4: // Fund Transfer
-                        show_transfer_menu(session);
-                        break;
-                        
-                    case 5: // Change PIN
-                        show_pin_change_menu(session);
-                        break;
-                        
-                    case 6: // Mini Statement
-                        show_mini_statement(session);
-                        break;
-                        
-                    case 7: // Exit
-                        session_active = false;
-                        break;
-                        
-                    default:
-                        show_error_screen("Invalid option. Please try again.");
-                        break;
+                if (choice == exit_option) {
+                    // Exit option
+                    session_active = false;
+                } else if (choice >= 1 && choice <= 6) {
+                    // Basic operations - available to all users
+                    switch (choice) {
+                        case 1: // Check Balance
+                            show_balance_screen(session);
+                            break;
+                            
+                        case 2: // Withdraw Cash
+                            show_withdrawal_menu(session);
+                            break;
+                            
+                        case 3: // Deposit Cash
+                            show_deposit_menu(session);
+                            break;
+                            
+                        case 4: // Fund Transfer
+                            show_transfer_menu(session);
+                            break;
+                            
+                        case 5: // Change PIN
+                            show_pin_change_menu(session);
+                            break;
+                            
+                        case 6: // Mini Statement
+                            show_mini_statement(session);
+                            break;
+                    }
+                } else if (role >= ROLE_NETBANKING && (choice == 7 || choice == 8)) {
+                    // Netbanking features
+                    switch (choice) {
+                        case 7: // Bill Payment
+                            show_bill_payment_menu(session);
+                            break;
+                            
+                        case 8: // Netbanking Services
+                            show_netbanking_menu(session);
+                            break;
+                    }
+                } else if (role >= ROLE_PREMIUM && (choice == 9 || choice == 10)) {
+                    // Premium features
+                    switch (choice) {
+                        case 9: // UPI Services
+                            show_upi_services_menu(session);
+                            break;
+                            
+                        case 10: // Virtual Card Management
+                            show_virtual_card_menu(session);
+                            break;
+                    }
+                } else if (role == ROLE_CORPORATE && choice == 11) {
+                    // Corporate features
+                    show_corporate_services_menu(session);
+                } else {
+                    // Invalid option
+                    show_error_screen("Invalid option. Please try again.");
                 }
                 
                 // Update session activity timestamp
