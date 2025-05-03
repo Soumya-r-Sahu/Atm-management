@@ -18,8 +18,11 @@
 #include <common/paths.h>
 #include <common/constants.h>
 #include <common/utils/hash_utils.h>
+#include "../../include/common/utils/path_manager.h" // For dynamic paths
 
-#define UPI_DATA_FILE "data/virtual_wallet.txt"
+#undef UPI_DATA_FILE
+#define UPI_DATA_FILE getUPIDataFilePath() // Use dynamic path
+
 #define UPI_TRANSACTION_FILE "data/upi_transactions.txt"
 #define MAX_LINE_LENGTH 512
 #define UPI_PIN_LENGTH 6

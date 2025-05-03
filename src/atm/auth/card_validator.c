@@ -1,4 +1,4 @@
-#include "../../../include/atm/validation/card_validator.h"
+#include "../../../include/atm/auth/card_validator.h"
 #include "../../../include/common/utils/logger.h"
 #include "../../../include/common/utils/path_manager.h"
 #include "../../../include/common/config/config_manager.h"

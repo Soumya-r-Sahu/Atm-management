@@ -1,8 +1,6 @@
 #include "atm/atm_menu.h"
 #include "common/utils/logger.h"
 #include "common/config/config_manager.h"
-#include "netbanking/netbanking.h"
-#include "upi_transaction/upi_transaction.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -12,6 +10,20 @@
 bool atm_initialize(void) {
     write_info_log("ATM system initializing");
     return true;
+}
+
+// Buffer clearing utility
+void clearInputBuffer() {
+    int c;
+    while ((c = getchar()) != '\n' && c != EOF);
+}
+
+// Receipt generation function
+void generateReceipt(int card_number, int transaction_type, double amount, double balance, const char* phoneNumber) {
+    printf("Generating receipt...\n");
+    // In a real implementation, this would format a receipt and possibly print it
+    // For now, this is just a stub
+    write_info_log("Receipt generated");
 }
 
 // UI screens
@@ -29,73 +41,37 @@ bool show_pin_entry_screen(int* card_number, int* pin) {
     return true;
 }
 
-// Get user role from database based on card number
-// This is a stub implementation that would typically query a database
+// This function is no longer needed as we're removing the role-based structure
+// Keeping it for backward compatibility but with a single return value
 UserRole get_user_role(int card_number) {
-    // For demo purposes:
-    // Cards ending in 1-3: Basic role
-    // Cards ending in 4-6: Netbanking role
-    // Cards ending in 7-8: Premium role
-    // Cards ending in 9-0: Corporate role
-    
-    int last_digit = card_number % 10;
-    
-    if (last_digit >= 1 && last_digit <= 3) {
-        return ROLE_BASIC;
-    } else if (last_digit >= 4 && last_digit <= 6) {
-        return ROLE_NETBANKING;
-    } else if (last_digit >= 7 && last_digit <= 8) {
-        return ROLE_PREMIUM;
-    } else {
-        return ROLE_CORPORATE;
-    }
+    // All users now have full access to all features
+    return ROLE_CORPORATE; // Return the highest access level for all users
 }
 
-int show_main_menu(AtmSession* session) {
-    int choice = 0;
-    UserRole role = get_user_role(session->card_number);
-    
-    printf("\n===== ATM Main Menu =====\n");
-    
-    // Basic operations - available to all users
-    printf("1. Check Balance\n");
-    printf("2. Withdraw Cash\n");
-    printf("3. Deposit Cash\n");
-    printf("4. Fund Transfer\n");
-    printf("5. Change PIN\n");
-    printf("6. Mini Statement\n");
-    
-    // Netbanking features - available to netbanking, premium and corporate roles
-    if (role >= ROLE_NETBANKING) {
-        printf("7. Bill Payment\n");
-        printf("8. Netbanking Services\n");
-    }
-    
-    // Premium features - available to premium and corporate roles
-    if (role >= ROLE_PREMIUM) {
-        printf("9. UPI Services\n");
-        printf("10. Virtual Card Management\n");
-    }
-    
-    // Corporate features - available only to corporate role
-    if (role == ROLE_CORPORATE) {
-        printf("11. Corporate Services\n");
-    }
-    
-    // Exit option - always last
-    printf("%d. Exit\n", (role == ROLE_BASIC) ? 7 : 
-                          (role == ROLE_NETBANKING) ? 9 : 
-                          (role == ROLE_PREMIUM) ? 11 : 12);
-    
-    printf("\nEnter your choice: ");
-    scanf("%d", &choice);
-    
-    return choice;
+void display_atm_main_menu() {
+    printf("\n\n\t\t======= ATM MAIN MENU =======\n");
+    printf("\t\t1. Check Balance\n");
+    printf("\t\t2. Withdraw Cash\n");
+    printf("\t\t3. Deposit Cash\n");
+    printf("\t\t4. Transfer Funds\n");
+    printf("\t\t5. Change PIN\n");
+    printf("\t\t6. Mini Statement\n");
+    printf("\t\t7. Bill Payment\n");
+    // Removed options for netbanking, UPI, corporate service, virtual card management, and role-based functionality
+    printf("\t\t8. Language Settings\n");
+    printf("\t\t9. Help & Support\n");
+    printf("\t\t0. Exit\n");
+    printf("\t\t============================\n");
+    printf("\t\tEnter your choice: ");
 }
 
 void show_balance_screen(AtmSession* session) {
     printf("\n===== Balance Information =====\n");
     printf("Your current balance is: $%.2f\n", session->balance);
+    
+    // Generate receipt for balance check
+    generateReceipt(session->card_number, TRANSACTION_BALANCE_CHECK, 0.0, session->balance, NULL);
+    printf("Receipt generated for this transaction.\n");
 }
 
 bool show_withdrawal_menu(AtmSession* session) {
@@ -104,7 +80,16 @@ bool show_withdrawal_menu(AtmSession* session) {
     printf("Enter amount to withdraw: $");
     scanf("%lf", &amount);
     
+    // Process withdrawal and update balance (simplified here)
+    double oldBalance = session->balance;
+    session->balance -= amount;
+    
     printf("Withdrawal of $%.2f processed successfully.\n", amount);
+    
+    // Generate receipt for withdrawal
+    generateReceipt(session->card_number, TRANSACTION_WITHDRAWAL, amount, session->balance, NULL);
+    printf("Receipt generated for this transaction.\n");
+    
     return true;
 }
 
@@ -114,7 +99,16 @@ bool show_deposit_menu(AtmSession* session) {
     printf("Enter amount to deposit: $");
     scanf("%lf", &amount);
     
+    // Process deposit and update balance (simplified here)
+    double oldBalance = session->balance;
+    session->balance += amount;
+    
     printf("Deposit of $%.2f processed successfully.\n", amount);
+    
+    // Generate receipt for deposit
+    generateReceipt(session->card_number, TRANSACTION_DEPOSIT, amount, session->balance, NULL);
+    printf("Receipt generated for this transaction.\n");
+    
     return true;
 }
 
@@ -128,7 +122,16 @@ bool show_transfer_menu(AtmSession* session) {
     printf("Enter amount to transfer: $");
     scanf("%lf", &amount);
     
+    // Process transfer and update balance (simplified here)
+    double oldBalance = session->balance;
+    session->balance -= amount;
+    
     printf("Transfer of $%.2f to card %d processed successfully.\n", amount, recipient_card);
+    
+    // Generate receipt for transfer
+    generateReceipt(session->card_number, TRANSACTION_MONEY_TRANSFER, amount, session->balance, NULL);
+    printf("Receipt generated for this transaction.\n");
+    
     return true;
 }
 
@@ -149,6 +152,11 @@ bool show_pin_change_menu(AtmSession* session) {
     }
     
     printf("PIN changed successfully.\n");
+    
+    // Generate receipt for PIN change
+    generateReceipt(session->card_number, TRANSACTION_PIN_CHANGE, 0.0, session->balance, NULL);
+    printf("Receipt generated for this transaction.\n");
+    
     return true;
 }
 
@@ -161,6 +169,10 @@ void show_mini_statement(AtmSession* session) {
     printf("4. Cash Withdrawal: $20.00\n");
     printf("5. ATM Inquiry: $0.00\n");
     printf("Current balance: $%.2f\n", session->balance);
+    
+    // Generate receipt for mini statement
+    generateReceipt(session->card_number, TRANSACTION_BALANCE_CHECK, 0.0, session->balance, NULL);
+    printf("Receipt generated for this transaction.\n");
 }
 
 // New functions for extended menu options
@@ -189,148 +201,17 @@ bool show_bill_payment_menu(AtmSession* session) {
     printf("Enter amount for %s bill: $", billers[biller_choice-1]);
     scanf("%lf", &amount);
     
+    // Process bill payment and update balance (simplified here)
+    double oldBalance = session->balance;
+    session->balance -= amount;
+    
     printf("Payment of $%.2f for %s bill processed successfully.\n", amount, billers[biller_choice-1]);
     write_info_log("Bill payment processed");
-    return true;
-}
-
-bool show_netbanking_menu(AtmSession* session) {
-    int choice;
     
-    printf("\n===== Netbanking Services =====\n");
-    printf("1. Check Netbanking Status\n");
-    printf("2. Update Mobile Number\n");
-    printf("3. Update Email Address\n");
-    printf("4. Set Transaction Limits\n");
-    printf("5. Back to main menu\n");
-    printf("\nEnter your choice: ");
-    scanf("%d", &choice);
+    // Generate receipt for bill payment
+    generateReceipt(session->card_number, TRANSACTION_BILL_PAYMENT, amount, session->balance, NULL);
+    printf("Receipt generated for this transaction.\n");
     
-    switch (choice) {
-        case 1:
-            printf("Netbanking is active for your account.\n");
-            break;
-        case 2:
-            printf("Mobile number updated successfully.\n");
-            break;
-        case 3:
-            printf("Email address updated successfully.\n");
-            break;
-        case 4:
-            printf("Transaction limits updated successfully.\n");
-            break;
-        case 5:
-        default:
-            return false;
-    }
-    
-    write_info_log("Netbanking service accessed");
-    return true;
-}
-
-bool show_upi_services_menu(AtmSession* session) {
-    int choice;
-    
-    printf("\n===== UPI Services =====\n");
-    printf("1. Activate UPI\n");
-    printf("2. Reset UPI PIN\n");
-    printf("3. Link New Account to UPI\n");
-    printf("4. View UPI Transaction History\n");
-    printf("5. Back to main menu\n");
-    printf("\nEnter your choice: ");
-    scanf("%d", &choice);
-    
-    switch (choice) {
-        case 1:
-            printf("UPI activated successfully.\n");
-            break;
-        case 2:
-            printf("UPI PIN reset instructions sent to your registered mobile.\n");
-            break;
-        case 3:
-            printf("New account linked to UPI successfully.\n");
-            break;
-        case 4:
-            printf("\nUPI Transaction History:\n");
-            printf("1. Paid Rs. 500 to merchant1@upi\n");
-            printf("2. Received Rs. 1000 from friend@upi\n");
-            break;
-        case 5:
-        default:
-            return false;
-    }
-    
-    write_info_log("UPI service accessed");
-    return true;
-}
-
-bool show_virtual_card_menu(AtmSession* session) {
-    int choice;
-    
-    printf("\n===== Virtual Card Management =====\n");
-    printf("1. View Virtual Cards\n");
-    printf("2. Generate New Virtual Card\n");
-    printf("3. Block Virtual Card\n");
-    printf("4. Set Virtual Card Limits\n");
-    printf("5. Back to main menu\n");
-    printf("\nEnter your choice: ");
-    scanf("%d", &choice);
-    
-    switch (choice) {
-        case 1:
-            printf("\nYour Virtual Cards:\n");
-            printf("1. Card ending with 4321 (Active)\n");
-            printf("2. Card ending with 8765 (Blocked)\n");
-            break;
-        case 2:
-            printf("New virtual card generated successfully.\n");
-            break;
-        case 3:
-            printf("Virtual card blocked successfully.\n");
-            break;
-        case 4:
-            printf("Virtual card limits updated successfully.\n");
-            break;
-        case 5:
-        default:
-            return false;
-    }
-    
-    write_info_log("Virtual card service accessed");
-    return true;
-}
-
-bool show_corporate_services_menu(AtmSession* session) {
-    int choice;
-    
-    printf("\n===== Corporate Services =====\n");
-    printf("1. Bulk Transfer\n");
-    printf("2. Corporate Account Statement\n");
-    printf("3. Manage Employee Accounts\n");
-    printf("4. Tax Payment Services\n");
-    printf("5. Back to main menu\n");
-    printf("\nEnter your choice: ");
-    scanf("%d", &choice);
-    
-    switch (choice) {
-        case 1:
-            printf("Bulk transfer initiated. Please check email for authorization.\n");
-            break;
-        case 2:
-            printf("Corporate account statement sent to registered email.\n");
-            break;
-        case 3:
-            printf("Please log in to web portal to manage employee accounts.\n");
-            break;
-        case 4:
-            printf("Tax payment portal accessed. Please select tax type online.\n");
-            break;
-        case 5:
-        default:
-            return false;
-    }
-    
-    write_info_log("Corporate service accessed");
     return true;
 }
 
@@ -352,6 +233,16 @@ void show_transaction_result(const char* title, const char* message, bool succes
         printf("Amount: $%.2f\n", amount);
         printf("Current Balance: $%.2f\n", balance);
     }
+}
+
+// Function to ask user if they want to continue with more transactions
+bool prompt_continue_session(void) {
+    char choice;
+    printf("\nDo you want to continue with another transaction? (y/n): ");
+    scanf(" %c", &choice);
+    clearInputBuffer();
+    
+    return (choice == 'y' || choice == 'Y');
 }
 
 // Session management
@@ -390,5 +281,84 @@ AtmSession* start_new_session(int card_number) {
 void end_session(AtmSession* session) {
     if (session) {
         free(session);
+    }
+}
+
+// Stub implementations for handler functions
+void handle_balance_check(AtmSession* session) {
+    show_balance_screen(session);
+}
+
+void handle_cash_withdrawal(AtmSession* session) {
+    show_withdrawal_menu(session);
+}
+
+void handle_cash_deposit(AtmSession* session) {
+    show_deposit_menu(session);
+}
+
+void handle_fund_transfer(AtmSession* session) {
+    show_transfer_menu(session);
+}
+
+void handle_pin_change(AtmSession* session) {
+    show_pin_change_menu(session);
+}
+
+void handle_mini_statement(AtmSession* session) {
+    show_mini_statement(session);
+}
+
+void handle_bill_payment(AtmSession* session) {
+    show_bill_payment_menu(session);
+}
+
+// Main menu function
+int show_main_menu(AtmSession* session) {
+    int choice;
+    display_atm_main_menu();
+    printf("Enter your choice: ");
+    scanf("%d", &choice);
+    clearInputBuffer();
+    return choice;
+}
+
+void handle_main_menu(AtmSession* session) {
+    int choice;
+    bool exit_menu = false;
+    
+    while (!exit_menu) {
+        display_atm_main_menu();
+        scanf("%d", &choice);
+        
+        switch (choice) {
+            case 1: // Check Balance
+                handle_balance_check(session);
+                break;
+            case 2: // Withdraw Cash
+                handle_cash_withdrawal(session);
+                break;
+            case 3: // Deposit Cash
+                handle_cash_deposit(session);
+                break;
+            case 4: // Fund Transfer
+                handle_fund_transfer(session);
+                break;
+            case 5: // Change PIN
+                handle_pin_change(session);
+                break;
+            case 6: // Mini Statement
+                handle_mini_statement(session);
+                break;
+            case 7: // Bill Payment
+                handle_bill_payment(session);
+                break;
+            case 0: // Exit
+                printf("\nThank you for using our ATM service.\n");
+                exit_menu = true;
+                break;
+            default:
+                printf("\nInvalid choice. Please try again.\n");
+        }
     }
 }

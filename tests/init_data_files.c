@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include "../include/common/utils/path_manager.h" // For dynamic paths
 
 // Define data file paths (should match paths.h definitions)
 #define CARD_FILE "../data/card.txt"
@@ -19,7 +20,8 @@
 #define ROOT_CARD_FILE "data/card.txt"
 #define ROOT_CUSTOMER_FILE "data/customer.txt" 
 #define ROOT_ACCOUNTING_FILE "data/accounting.txt"
-#define ROOT_ATM_DATA_FILE "data/atm_data.txt"
+#undef ROOT_ATM_DATA_FILE
+#define ROOT_ATM_DATA_FILE getATMDataFilePath() // Use dynamic path
 #define ROOT_VIRTUAL_WALLET_FILE "data/virtual_wallet.txt"
 #define ROOT_SYSTEM_CONFIG_FILE "data/system_config.txt"
 

@@ -15,3 +15,23 @@
 | A2504012 | admin456   | Query          | Reports        | Transaction report generated              | 2025-04-30 16:40:12     |
 | A2505001 | admin123   | Update         | System         | System maintenance scheduled              | 2025-05-01 14:22:55     |
 +----------+------------+----------------+----------------+--------------------------------------------+-------------------------+
+L50001   | System   | ADMIN      | System         | Admin application started                | 2025-05-02 16:48:05
+L50002   | System   | SECURITY   | System         | Authentication failed - user not found:  | 2025-05-02 16:48:05
+L50003   | System   | SECURITY   | System         | Authentication failed - user not found:  | 2025-05-02 16:48:05
+L50004   | System   | SECURITY   | System         | Authentication failed - user not found:  | 2025-05-02 16:48:05
+L50005   | System   | ADMIN      | System         | Login failed after maximum attempts      | 2025-05-02 16:48:05
+L50006   | System   | ADMIN      | System         | Admin application started                | 2025-05-02 16:48:09
+L50007   | System   | SECURITY   | System         | Authentication failed - user not found:  | 2025-05-02 16:48:09
+L50008   | System   | SECURITY   | System         | Authentication failed - user not found:  | 2025-05-02 16:48:09
+L50009   | System   | SECURITY   | System         | Authentication failed - user not found:  | 2025-05-02 16:48:09
+L50010   | System   | ADMIN      | System         | Login failed after maximum attempts      | 2025-05-02 16:48:09
+L50011   | System   | ADMIN      | System         | Admin application started                | 2025-05-02 16:48:38
+L50012   | System   | SECURITY   | System         | Authentication failed - invalid password | 2025-05-02 16:48:49
+L50013   | System   | ACCESS     | System         | User authenticated successfully          | 2025-05-02 16:49:59
+L50014   | System   | ACCESS     | System         | User authenticated successfully          | 2025-05-02 16:51:39
+L50015   | System   | ACCESS     | System         | User authenticated successfully          | 2025-05-02 23:45:02
+L50016   | System   | ACCESS     | System         | User authenticated successfully          | 2025-05-02 23:46:32
+L50017   | System   | ACCESS     | System         | User authenticated successfully          | 2025-05-02 23:48:23
+L50018   | System   | ACCESS     | System         | User authenticated successfully          | 2025-05-02 23:49:19
+L50019   | System   | ACCESS     | System         | User authenticated successfully          | 2025-05-02 23:49:35
+L50020   | System   | ACCESS     | System         | User authenticated successfully          | 2025-05-03 01:57:15

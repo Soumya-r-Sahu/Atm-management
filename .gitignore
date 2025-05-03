@@ -1,0 +1,68 @@
+# Compiled object files
+*.o
+*.ko
+*.obj
+*.elf
+
+# Executables
+*.exe
+*.out
+*.app
+*.i*86
+*.x86_64
+*.hex
+backend/c_backend/bin/atm_system
+backend/c_backend/bin/admin_system
+backend/c_backend/bin/upi_system
+
+# Build directories
+build/
+bin/
+obj/
+
+# IDE specific files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Dependency directories
+node_modules/
+vendor/
+
+# Log files
+backend/c_backend/logs/*.log
+backend/web_backend/logs/*.log
+
+# Configuration files with sensitive information
+backend/c_backend/include/common/db_config_production.h
+backend/web_backend/config/config_production.php
+frontend/mobile/flutter_app/lib/config/production_config.dart
+
+# Database backup files
+*.sql.bak
+*.db-journal
+*.sqlite3
+
+# Temporary files
+*.tmp
+*.temp
+backend/c_backend/data/temp/
+.DS_Store
+
+# Flutter/Dart specific
+frontend/mobile/flutter_app/.dart_tool/
+frontend/mobile/flutter_app/.flutter-plugins
+frontend/mobile/flutter_app/.flutter-plugins-dependencies
+frontend/mobile/flutter_app/.packages
+frontend/mobile/flutter_app/build/
+frontend/mobile/flutter_app/.pub/
+frontend/mobile/flutter_app/pubspec.lock
+
+# PHP specific
+frontend/web/vendor/
+frontend/web/composer.lock
+
+# Local environment files
+.env
+.env.local

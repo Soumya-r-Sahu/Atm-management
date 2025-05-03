@@ -14,13 +14,15 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include "../../include/common/config/config_manager.h" // For dynamic configuration
 
 #define NETBANKING_DATA_FILE "data/netbanking_users.txt"
 #define NETBANKING_TRANSACTIONS_FILE "data/netbanking_transactions.txt"
 #define BENEFICIARY_DATA_FILE "data/beneficiary_data.txt"
 #define OTP_DATA_FILE "data/netbanking_otp.txt"
 #define MAX_LOGIN_ATTEMPTS 5
-#define SESSION_TIMEOUT_SECONDS 600 // 10 minutes
+#undef SESSION_TIMEOUT_SECONDS
+#define SESSION_TIMEOUT_SECONDS getConfigValueInt(CONFIG_SESSION_TIMEOUT_SECONDS) // Use dynamic value
 
 // Database of active sessions
 static NetBankingSession active_sessions[100] = {0};

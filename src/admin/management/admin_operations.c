@@ -4,14 +4,18 @@
 #include "../../../include/common/database/database.h"
 #include "../../../include/common/database/card_account_management.h"
 #include "../../../include/common/paths.h"
+#include "../../../include/common/utils/path_manager.h" // For dynamic paths
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <mysql/mysql.h>
 
-// Path to the ATM data file
-#define ATM_DATA_FILE "data/atm_data.txt"
-#define TEMP_ATM_DATA_FILE "data/temp/atm_data_temp.txt"
+#undef ATM_DATA_FILE
+#define ATM_DATA_FILE getATMDataFilePath() // Use dynamic path
+
+#undef TEMP_ATM_DATA_FILE
+#define TEMP_ATM_DATA_FILE getTempATMDataFilePath() // Use dynamic path
 
 // Forward declarations for helper functions
 int createCustomerAccount(const char *accountHolderName, int *cardNumber, int *pin);
@@ -246,92 +250,20 @@ void toggle_card_status(int card_number) {
 
 // Update ATM status
 int update_atm_status(const char* atm_id, const char* new_status) {
-    FILE* file = fopen(ATM_DATA_FILE, "r");
-    if (file == NULL) {
-        writeErrorLog("Failed to open ATM data file for reading");
-        return 0; // Failed to open file
-    }
-    
-    // Create a temporary file for writing the updated data
-    FILE* tempFile = fopen(TEMP_ATM_DATA_FILE, "w");
-    if (tempFile == NULL) {
-        fclose(file);
-        writeErrorLog("Failed to create temporary file for ATM data update");
-        return 0; // Failed to create temporary file
-    }
-    
-    char line[256];
-    int lineCount = 0;
-    int found = 0;
-    
-    // Read and copy the file line by line
-    while (fgets(line, sizeof(line), file) != NULL) {
-        lineCount++;
-        
-        // Copy header lines and separator lines as they are
-        if (lineCount <= 3 || line[0] == '+') {
-            fprintf(tempFile, "%s", line);
-            continue;
-        }
-        
-        // Check if this is the line with the specified ATM ID
-        char atmIdFromLine[20];
-        if (sscanf(line, "| %s |", atmIdFromLine) == 1 && strcmp(atmIdFromLine, atm_id) == 0) {
-            // Found the ATM to update
-            found = 1;
-            
-            // Extract all fields
-            char location[100];
-            char status[30];
-            double totalCash;
-            char lastRefilled[30];
-            int transactionCount;
-            
-            // Parse the current line
-            // Format: | ATM001 | Main Branch, Downtown   | Online           | 250000.00  | 2025-04-25 08:00:00 | 123              |
-            if (sscanf(line, "| %*s | %99[^|] | %29[^|] | %lf | %29[^|] | %d |",
-                      location, status, &totalCash, lastRefilled, &transactionCount) == 5) {
-                
-                // Write the updated line to the temp file
-                fprintf(tempFile, "| %s | %s | %s | %.2f | %s | %d |\n",
-                       atm_id, location, new_status, totalCash, lastRefilled, transactionCount);
-                
-                // Log the activity
-                char logMsg[200];
-                sprintf(logMsg, "Updated ATM %s status from '%s' to '%s'", 
-                        atm_id, status, new_status);
-                writeAuditLog("ADMIN", logMsg);
-            } else {
-                // If there was an error parsing the line, copy it as-is
-                fprintf(tempFile, "%s", line);
-                writeErrorLog("Failed to parse ATM data line during status update");
-            }
-        } else {
-            // Not the target ATM, copy line as-is
-            fprintf(tempFile, "%s", line);
-        }
-    }
-    
-    // Close both files
-    fclose(file);
-    fclose(tempFile);
-    
-    if (!found) {
-        remove(TEMP_ATM_DATA_FILE);
-        writeErrorLog("ATM ID not found in ATM data file");
+    MYSQL* conn = initMySQLConnection();
+    if (conn == NULL) {
         return 0;
     }
-    
-    // Replace the original file with the updated temp file
-    if (remove(ATM_DATA_FILE) != 0) {
-        writeErrorLog("Failed to delete original ATM data file");
+
+    char query[256];
+    snprintf(query, sizeof(query), "UPDATE ATMs SET status = '%s' WHERE atm_id = '%s'", new_status, atm_id);
+
+    if (mysql_query(conn, query)) {
+        write_error_log(mysql_error(conn));
+        mysql_close(conn);
         return 0;
     }
-    
-    if (rename(TEMP_ATM_DATA_FILE, ATM_DATA_FILE) != 0) {
-        writeErrorLog("Failed to rename temp ATM data file");
-        return 0;
-    }
-    
-    return 1; // Update successful
+
+    mysql_close(conn);
+    return 1;
 }

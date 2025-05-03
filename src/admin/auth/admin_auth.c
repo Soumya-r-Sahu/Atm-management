@@ -2,6 +2,7 @@
 #include "../../../include/common/utils/logger.h"
 #include "../../../include/common/utils/path_manager.h"
 #include "../../../include/common/security/hash_utils.h"
+#include "../../../include/common/config/config_manager.h" // For dynamic configuration
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -9,7 +10,8 @@
 
 // Maximum login attempts before lockout
 #define MAX_LOGIN_ATTEMPTS 3
-#define SESSION_TIMEOUT_SECONDS 1800 // 30 minutes
+#undef SESSION_TIMEOUT_SECONDS
+#define SESSION_TIMEOUT_SECONDS getConfigValueInt(CONFIG_SESSION_TIMEOUT_SECONDS) // Use dynamic value
 
 // Function to check if an admin has a specific role
 bool admin_has_role(const AdminUser* admin, const char* role) {

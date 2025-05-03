@@ -11,4 +11,10 @@
 | ERR20250429001 | Database | 2025-04-29 11:42:18 | Backend  | Critical               | Transaction rollback failure    |
 | ERR20250430001 | Security | 2025-04-30 18:25:03 | VATM002  | Critical               | Potential brute force attempt   |
 | ERR20250501001 | System   | 2025-05-01 07:15:29 | ATM005   | High                   | System reboot during transaction|
-+----------------+----------+---------------------+----------+--------------------------+--------------------------------+
++----------------+----------+---------------------+----------+--------------------------+--------------------------------+[2025-05-02 16:48:05] [ERROR] Failed login attempt for admin user: 
+[2025-05-02 16:48:05] [ERROR] Failed login attempt for admin user: 
+[2025-05-02 16:48:05] [ERROR] Failed login attempt for admin user: 
+[2025-05-02 16:48:09] [ERROR] Failed login attempt for admin user: 
+[2025-05-02 16:48:09] [ERROR] Failed login attempt for admin user: 
+[2025-05-02 16:48:09] [ERROR] Failed login attempt for admin user: 
+[2025-05-02 16:48:49] [ERROR] Failed login attempt for admin user: admin@123

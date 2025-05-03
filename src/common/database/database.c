@@ -6,6 +6,30 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <mysql/mysql.h>
+
+// MySQL connection details
+#define DB_HOST "localhost"
+#define DB_USER "root"
+#define DB_PASS "password"
+#define DB_NAME "atm_management"
+
+// Initialize MySQL connection
+static MYSQL* initMySQLConnection() {
+    MYSQL* conn = mysql_init(NULL);
+    if (conn == NULL) {
+        write_error_log("MySQL initialization failed");
+        return NULL;
+    }
+
+    if (mysql_real_connect(conn, DB_HOST, DB_USER, DB_PASS, DB_NAME, 0, NULL, 0) == NULL) {
+        write_error_log(mysql_error(conn));
+        mysql_close(conn);
+        return NULL;
+    }
+
+    return conn;
+}
 
 // Initialize the database system
 bool initialize_database(void) {
@@ -362,34 +386,37 @@ bool getCardHolderPhone(int cardNumber, char* phone, size_t phoneSize) {
 
 // Fetch account balance
 bool fetchBalance(int cardNumber, float* balance) {
-    FILE* file = fopen(getAccountingFilePath(), "r");
-    if (!file) {
-        write_error_log("Failed to open accounting file for reading");
+    MYSQL* conn = initMySQLConnection();
+    if (conn == NULL) {
         return false;
     }
-    
-    char line[256];
-    bool found = false;
-    
-    // Skip header lines
-    fgets(line, sizeof(line), file);
-    fgets(line, sizeof(line), file);
-    
-    // Format: Account ID | Card Number | Balance | Currency | Status
-    while (fgets(line, sizeof(line), file)) {
-        int stored_card_number;
-        float stored_balance;
-        if (sscanf(line, "%*s | %d | %f", &stored_card_number, &stored_balance) >= 2) {
-            if (stored_card_number == cardNumber) {
-                *balance = stored_balance;
-                found = true;
-                break;
-            }
-        }
+
+    char query[256];
+    snprintf(query, sizeof(query), "SELECT balance FROM Accounts WHERE cardNumber = %d", cardNumber);
+
+    if (mysql_query(conn, query)) {
+        write_error_log(mysql_error(conn));
+        mysql_close(conn);
+        return false;
     }
-    
-    fclose(file);
-    return found;
+
+    MYSQL_RES* result = mysql_store_result(conn);
+    if (result == NULL) {
+        write_error_log(mysql_error(conn));
+        mysql_close(conn);
+        return false;
+    }
+
+    MYSQL_ROW row = mysql_fetch_row(result);
+    if (row) {
+        *balance = atof(row[0]);
+    } else {
+        *balance = 0.0;
+    }
+
+    mysql_free_result(result);
+    mysql_close(conn);
+    return true;
 }
 
 // Update account balance

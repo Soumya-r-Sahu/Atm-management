@@ -1,367 +1,702 @@
-#include "../../include/common/database/database.h"
-#include "../../include/common/utils/logger.h" // Updated path
-#include "../../include/common/paths.h"       // Updated path
-#include "../../include/common/security/hash_utils.h" // Updated path
+#include "../../include/common/database/db_config.h"
+#include "../../include/common/utils/logger.h"
+#include "../../include/common/paths.h"
+#include "../../include/common/database/transaction_manager.h"
+#include <mysql/mysql.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdbool.h>
 #include <time.h>
-#include <limits.h> // Added for INT_MAX
+#include <pthread.h>
 
-// Helper function to get current date as a string (YYYY-MM-DD)
-static void getCurrentDate(char *buffer, size_t size) {
-    time_t now = time(NULL);
-    struct tm *t = localtime(&now);
-    strftime(buffer, size, "%Y-%m-%d", t);
-}
+// Connection pool structures
+static DatabaseConnection connection_pool[MAX_DB_CONNECTIONS];
+static pthread_mutex_t pool_mutex = PTHREAD_MUTEX_INITIALIZER;
+static bool pool_initialized = false;
 
-// Helper function to get current timestamp as a string (YYYY-MM-DD HH:MM:SS)
-static void getCurrentTimestamp(char *buffer, size_t size) {
-    time_t now = time(NULL);
-    struct tm *t = localtime(&now);
-    strftime(buffer, size, "%Y-%m-%d %H:%M:%S", t);
-}
-
-// Initialize database
-bool initialize_database(void) {
-    // Ensure data directories exist
-    if (!ensureDirectoryExists(PROD_DATA_DIR)) {
-        writeErrorLog("Failed to create production data directory");
-        return false;
+// Initialize the database connection pool
+bool db_init(void) {
+    pthread_mutex_lock(&pool_mutex);
+    
+    if (pool_initialized) {
+        pthread_mutex_unlock(&pool_mutex);
+        return true;
     }
     
-    if (!ensureDirectoryExists(TEST_DATA_DIR)) {
-        writeErrorLog("Failed to create test data directory");
-        return false;
+    // Initialize all connections
+    for (int i = 0; i < MAX_DB_CONNECTIONS; i++) {
+        connection_pool[i].connection = NULL;
+        connection_pool[i].in_use = false;
+        connection_pool[i].last_used = 0;
     }
     
-    if (!ensureDirectoryExists("data/temp")) {
-        writeErrorLog("Failed to create temporary data directory");
-        return false;
-    }
+    writeInfoLog("Database connection pool initialized with %d connections", MAX_DB_CONNECTIONS);
+    pool_initialized = true;
     
-    // Ensure all required database files exist
-    const char* requiredFiles[] = {
-        getCardFilePath(),
-        getCustomerFilePath(),
-        getAccountingFilePath(),
-        getAdminCredentialsFilePath(),
-        getSystemConfigFilePath()
-    };
-    
-    for (int i = 0; i < sizeof(requiredFiles) / sizeof(requiredFiles[0]); i++) {
-        FILE* file = fopen(requiredFiles[i], "a+");
-        if (!file) {
-            char errorMsg[100];
-            sprintf(errorMsg, "Failed to initialize database file: %s", requiredFiles[i]);
-            writeErrorLog(errorMsg);
-            return false;
-        }
-        fclose(file);
-    }
-    
-    writeInfoLog("Database initialized successfully");
+    pthread_mutex_unlock(&pool_mutex);
     return true;
 }
 
-// Check if a card number exists in the database
-bool doesCardExist(int cardNumber) {
-    FILE* file = fopen(getCardFilePath(), "r");
-    if (file == NULL) {
-        writeErrorLog("Failed to open card.txt file");
-        return false;
+// Clean up the database connection pool
+void db_cleanup(void) {
+    pthread_mutex_lock(&pool_mutex);
+    
+    // Close all connections
+    for (int i = 0; i < MAX_DB_CONNECTIONS; i++) {
+        if (connection_pool[i].connection != NULL) {
+            mysql_close(connection_pool[i].connection);
+            connection_pool[i].connection = NULL;
+            connection_pool[i].in_use = false;
+        }
     }
     
-    char line[256];
-    bool found = false;
+    writeInfoLog("Database connection pool cleaned up");
+    pool_initialized = false;
     
-    // Skip header lines
-    fgets(line, sizeof(line), file);
-    fgets(line, sizeof(line), file);
+    pthread_mutex_unlock(&pool_mutex);
+}
+
+// Get a connection from the pool
+MYSQL* db_get_connection(void) {
+    if (!pool_initialized) {
+        if (!db_init()) {
+            writeErrorLog("Failed to initialize database pool");
+            return NULL;
+        }
+    }
     
-    char cardID[10], accountID[10], cardNumberStr[20], cardType[10], expiryDate[15], status[10], pinHash[65];
+    pthread_mutex_lock(&pool_mutex);
     
-    while (fgets(line, sizeof(line), file) != NULL) {
-        if (sscanf(line, "%s | %s | %s | %s | %s | %s | %s", 
-                   cardID, accountID, cardNumberStr, cardType, expiryDate, status, pinHash) >= 7) {
-            int storedCardNumber = atoi(cardNumberStr);
-            if (storedCardNumber == cardNumber) {
-                found = true;
-                break;
+    // First, try to find an existing connection
+    for (int i = 0; i < MAX_DB_CONNECTIONS; i++) {
+        if (connection_pool[i].connection != NULL && !connection_pool[i].in_use) {
+            // Check if connection is still valid
+            if (mysql_ping(connection_pool[i].connection) == 0) {
+                connection_pool[i].in_use = true;
+                connection_pool[i].last_used = time(NULL);
+                pthread_mutex_unlock(&pool_mutex);
+                return connection_pool[i].connection;
+            } else {
+                // Connection is dead, close and mark as null
+                mysql_close(connection_pool[i].connection);
+                connection_pool[i].connection = NULL;
             }
         }
     }
     
-    fclose(file);
-    return found;
+    // No existing connections available, try to create a new one
+    for (int i = 0; i < MAX_DB_CONNECTIONS; i++) {
+        if (connection_pool[i].connection == NULL) {
+            MYSQL* conn = mysql_init(NULL);
+            
+            if (conn == NULL) {
+                writeErrorLog("Failed to initialize MySQL connection");
+                pthread_mutex_unlock(&pool_mutex);
+                return NULL;
+            }
+            
+            // Set options
+            unsigned int timeout = CONNECTION_TIMEOUT;
+            mysql_options(conn, MYSQL_OPT_CONNECT_TIMEOUT, &timeout);
+            
+            // Connect to database
+            if (mysql_real_connect(conn, DB_HOST, DB_USER, DB_PASS, DB_NAME, 0, NULL, 0)) {
+                connection_pool[i].connection = conn;
+                connection_pool[i].in_use = true;
+                connection_pool[i].last_used = time(NULL);
+                pthread_mutex_unlock(&pool_mutex);
+                return conn;
+            } else {
+                writeErrorLog("Failed to connect to MySQL: %s", mysql_error(conn));
+                mysql_close(conn);
+                pthread_mutex_unlock(&pool_mutex);
+                return NULL;
+            }
+        }
+    }
+    
+    // If we get here, no connections are available
+    writeErrorLog("No database connections available in the pool");
+    pthread_mutex_unlock(&pool_mutex);
+    return NULL;
+}
+
+// Release a connection back to the pool
+void db_release_connection(MYSQL* conn) {
+    if (conn == NULL) {
+        return;
+    }
+    
+    pthread_mutex_lock(&pool_mutex);
+    
+    // Find the connection in the pool
+    for (int i = 0; i < MAX_DB_CONNECTIONS; i++) {
+        if (connection_pool[i].connection == conn) {
+            connection_pool[i].in_use = false;
+            connection_pool[i].last_used = time(NULL);
+            pthread_mutex_unlock(&pool_mutex);
+            return;
+        }
+    }
+    
+    // If we get here, the connection wasn't in our pool
+    writeWarningLog("Attempted to release a connection not in the pool");
+    pthread_mutex_unlock(&pool_mutex);
+}
+
+// Execute a simple SQL query with no result set
+bool db_execute_query(const char* query) {
+    MYSQL* conn = db_get_connection();
+    if (!conn) {
+        return false;
+    }
+    
+    bool result = (mysql_query(conn, query) == 0);
+    
+    if (!result) {
+        writeErrorLog("SQL Error: %s\nQuery: %s", mysql_error(conn), query);
+    }
+    
+    db_release_connection(conn);
+    return result;
+}
+
+// Execute a SQL query that returns a result set
+bool db_execute_select(const char* query, void (*callback)(MYSQL_ROW row, void* user_data), void* user_data) {
+    MYSQL* conn = db_get_connection();
+    if (!conn) {
+        return false;
+    }
+    
+    bool success = false;
+    
+    if (mysql_query(conn, query) == 0) {
+        MYSQL_RES* result = mysql_store_result(conn);
+        if (result) {
+            MYSQL_ROW row;
+            while ((row = mysql_fetch_row(result))) {
+                callback(row, user_data);
+            }
+            mysql_free_result(result);
+            success = true;
+        } else {
+            writeErrorLog("Failed to store result: %s", mysql_error(conn));
+        }
+    } else {
+        writeErrorLog("SQL Error: %s\nQuery: %s", mysql_error(conn), query);
+    }
+    
+    db_release_connection(conn);
+    return success;
+}
+
+// Check if a customer exists
+bool doesCustomerExist(const char* customerId) {
+    if (!customerId) {
+        writeErrorLog("NULL customer ID provided to doesCustomerExist");
+        return false;
+    }
+    
+    MYSQL *conn = db_get_connection();
+    if (!conn) {
+        writeErrorLog("Failed to get database connection in doesCustomerExist");
+        return false;
+    }
+    
+    char query[200];
+    sprintf(query, "SELECT COUNT(*) FROM %s WHERE %s = '%s'", 
+            TABLE_CUSTOMERS, COL_CUSTOMER_ID, customerId);
+    
+    bool exists = false;
+    
+    if (mysql_query(conn, query) == 0) {
+        MYSQL_RES *result = mysql_store_result(conn);
+        if (result) {
+            MYSQL_ROW row = mysql_fetch_row(result);
+            if (row && row[0]) {
+                exists = (atoi(row[0]) > 0);
+            }
+            mysql_free_result(result);
+        }
+    } else {
+        writeErrorLog("MySQL query error in doesCustomerExist: %s", mysql_error(conn));
+    }
+    
+    db_release_connection(conn);
+    return exists;
+}
+
+// Check if an account exists
+bool doesAccountExist(const char* accountNumber) {
+    if (!accountNumber) {
+        writeErrorLog("NULL account number provided to doesAccountExist");
+        return false;
+    }
+    
+    MYSQL *conn = db_get_connection();
+    if (!conn) {
+        writeErrorLog("Failed to get database connection in doesAccountExist");
+        return false;
+    }
+    
+    char query[200];
+    sprintf(query, "SELECT COUNT(*) FROM %s WHERE %s = '%s'", 
+            TABLE_ACCOUNTS, COL_ACCOUNT_NUMBER, accountNumber);
+    
+    bool exists = false;
+    
+    if (mysql_query(conn, query) == 0) {
+        MYSQL_RES *result = mysql_store_result(conn);
+        if (result) {
+            MYSQL_ROW row = mysql_fetch_row(result);
+            if (row && row[0]) {
+                exists = (atoi(row[0]) > 0);
+            }
+            mysql_free_result(result);
+        }
+    } else {
+        writeErrorLog("MySQL query error in doesAccountExist: %s", mysql_error(conn));
+    }
+    
+    db_release_connection(conn);
+    return exists;
+}
+
+// Check if a card exists
+bool doesCardExist(int cardNumber) {
+    MYSQL *conn = db_get_connection();
+    if (!conn) {
+        writeErrorLog("Failed to get database connection in doesCardExist");
+        return false;
+    }
+    
+    char query[200];
+    sprintf(query, "SELECT COUNT(*) FROM %s WHERE %s = '%d'", 
+            TABLE_CARDS, COL_CARD_NUMBER, cardNumber);
+    
+    bool exists = false;
+    
+    if (mysql_query(conn, query) == 0) {
+        MYSQL_RES *result = mysql_store_result(conn);
+        if (result) {
+            MYSQL_ROW row = mysql_fetch_row(result);
+            if (row && row[0]) {
+                exists = (atoi(row[0]) > 0);
+            }
+            mysql_free_result(result);
+        }
+    } else {
+        writeErrorLog("MySQL query error in doesCardExist: %s", mysql_error(conn));
+    }
+    
+    db_release_connection(conn);
+    return exists;
+}
+
+// Get account balance
+double getAccountBalance(const char* accountNumber) {
+    if (!accountNumber) {
+        writeErrorLog("NULL account number provided to getAccountBalance");
+        return -1.0;
+    }
+    
+    MYSQL *conn = db_get_connection();
+    if (!conn) {
+        writeErrorLog("Failed to get database connection in getAccountBalance");
+        return -1.0;
+    }
+    
+    char query[200];
+    sprintf(query, "SELECT %s FROM %s WHERE %s = '%s'", 
+            COL_BALANCE, TABLE_ACCOUNTS, COL_ACCOUNT_NUMBER, accountNumber);
+    
+    double balance = -1.0;
+    
+    if (mysql_query(conn, query) == 0) {
+        MYSQL_RES *result = mysql_store_result(conn);
+        if (result) {
+            MYSQL_ROW row = mysql_fetch_row(result);
+            if (row && row[0]) {
+                balance = atof(row[0]);
+            }
+            mysql_free_result(result);
+        }
+    } else {
+        writeErrorLog("MySQL query error in getAccountBalance: %s", mysql_error(conn));
+    }
+    
+    db_release_connection(conn);
+    return balance;
+}
+
+// Update account balance
+bool updateAccountBalance(const char* accountNumber, double newBalance) {
+    if (!accountNumber) {
+        writeErrorLog("NULL account number provided to updateAccountBalance");
+        return false;
+    }
+    
+    MYSQL *conn = db_get_connection();
+    if (!conn) {
+        writeErrorLog("Failed to get database connection in updateAccountBalance");
+        return false;
+    }
+    
+    char query[200];
+    sprintf(query, "UPDATE %s SET %s = %.2f, last_transaction = NOW() WHERE %s = '%s'", 
+            TABLE_ACCOUNTS, COL_BALANCE, newBalance, COL_ACCOUNT_NUMBER, accountNumber);
+    
+    bool success = false;
+    
+    if (mysql_query(conn, query) == 0) {
+        if (mysql_affected_rows(conn) > 0) {
+            success = true;
+            writeInfoLog("Updated balance for account %s to %.2f", accountNumber, newBalance);
+        } else {
+            writeErrorLog("No rows affected when updating balance for account %s", accountNumber);
+        }
+    } else {
+        writeErrorLog("MySQL query error in updateAccountBalance: %s", mysql_error(conn));
+    }
+    
+    db_release_connection(conn);
+    return success;
 }
 
 // Check if a card is active
 bool isCardActive(int cardNumber) {
-    FILE* file = fopen(getCardFilePath(), "r");
-    if (file == NULL) {
-        writeErrorLog("Failed to open card.txt file");
+    MYSQL *conn = db_get_connection();
+    if (!conn) {
+        writeErrorLog("Failed to get database connection in isCardActive");
         return false;
     }
     
-    char line[256];
+    char query[200];
+    sprintf(query, "SELECT status FROM %s WHERE %s = '%d'", 
+            TABLE_CARDS, COL_CARD_NUMBER, cardNumber);
+    
     bool active = false;
     
-    // Skip header lines
-    fgets(line, sizeof(line), file);
-    fgets(line, sizeof(line), file);
-    
-    char cardID[10], accountID[10], cardNumberStr[20], cardType[10], expiryDate[15], status[10], pinHash[65];
-    
-    while (fgets(line, sizeof(line), file) != NULL) {
-        if (sscanf(line, "%s | %s | %s | %s | %s | %s | %s", 
-                   cardID, accountID, cardNumberStr, cardType, expiryDate, status, pinHash) >= 7) {
-            int storedCardNumber = atoi(cardNumberStr);
-            if (storedCardNumber == cardNumber) {
-                // Check if status is "Active"
-                if (strstr(status, "Active") != NULL) {
-                    active = true;
-                }
-                break;
+    if (mysql_query(conn, query) == 0) {
+        MYSQL_RES *result = mysql_store_result(conn);
+        if (result) {
+            MYSQL_ROW row = mysql_fetch_row(result);
+            if (row && row[0]) {
+                active = (strcmp(row[0], "ACTIVE") == 0);
             }
+            mysql_free_result(result);
         }
+    } else {
+        writeErrorLog("MySQL query error in isCardActive: %s", mysql_error(conn));
     }
     
-    fclose(file);
+    db_release_connection(conn);
     return active;
 }
 
-// Validate card with PIN (legacy method, for backward compatibility)
-bool validateCard(int cardNumber, int pin) {
-    char pinStr[20];
-    sprintf(pinStr, "%d", pin);
-    char* pinHash = sha256_hash(pinStr);
-    bool result = validateCardWithHash(cardNumber, pinHash);
-    free(pinHash);
-    return result;
-}
-
-// Validate card with PIN hash
-bool validateCardWithHash(int cardNumber, const char* pinHash) {
-    if (pinHash == NULL) {
-        writeErrorLog("NULL PIN hash provided to validateCardWithHash");
-        return false;
-    }
-    
-    FILE* file = fopen(getCardFilePath(), "r");
-    if (file == NULL) {
-        writeErrorLog("Failed to open card.txt file");
-        return false;
-    }
-    
-    char line[256];
-    bool valid = false;
-    
-    // Skip header lines
-    fgets(line, sizeof(line), file);
-    fgets(line, sizeof(line), file);
-    
-    char cardID[10], accountID[10], cardNumberStr[20], cardType[10], expiryDate[15], status[10], storedPinHash[65];
-    
-    while (fgets(line, sizeof(line), file) != NULL) {
-        if (sscanf(line, "%s | %s | %s | %s | %s | %s | %s", 
-                   cardID, accountID, cardNumberStr, cardType, expiryDate, status, storedPinHash) >= 7) {
-            int storedCardNumber = atoi(cardNumberStr);
-            if (storedCardNumber == cardNumber) {
-                // Use secure hash comparison instead of strcmp
-                if (secure_hash_compare(storedPinHash, pinHash)) {
-                    valid = true;
-                }
-                break;
-            }
-        }
-    }
-    
-    fclose(file);
-    return valid;
-}
-
-// Update PIN for a card (legacy method)
-bool updatePIN(int cardNumber, int newPin) {
-    char pinStr[20];
-    sprintf(pinStr, "%d", newPin);
-    char* pinHash = sha256_hash(pinStr);
-    bool result = updatePINHash(cardNumber, pinHash);
-    free(pinHash);
-    return result;
-}
-
-// Update PIN hash for a card
-bool updatePINHash(int cardNumber, const char* pinHash) {
-    if (pinHash == NULL) {
-        writeErrorLog("NULL PIN hash provided to updatePINHash");
-        return false;
-    }
-    
-    FILE* file = fopen(getCardFilePath(), "r");
-    if (file == NULL) {
-        writeErrorLog("Failed to open card.txt file");
-        return false;
-    }
-    
-    char tempFileName[100];
-    sprintf(tempFileName, "%s/temp/temp_card.txt", isTestingMode() ? TEST_DATA_DIR : PROD_DATA_DIR);
-    
-    FILE* tempFile = fopen(tempFileName, "w");
-    if (tempFile == NULL) {
-        fclose(file);
-        writeErrorLog("Failed to create temporary card file");
-        return false;
-    }
-    
-    char line[256];
-    bool updated = false;
-    
-    // Copy header lines
-    fgets(line, sizeof(line), file);
-    fputs(line, tempFile);
-    fgets(line, sizeof(line), file);
-    fputs(line, tempFile);
-    
-    char cardID[10], accountID[10], cardNumberStr[20], cardType[10], expiryDate[15], status[10], oldPinHash[65];
-    
-    while (fgets(line, sizeof(line), file) != NULL) {
-        char lineCopy[256];
-        strcpy(lineCopy, line);
-        
-        if (sscanf(lineCopy, "%s | %s | %s | %s | %s | %s | %s", 
-                   cardID, accountID, cardNumberStr, cardType, expiryDate, status, oldPinHash) >= 7) {
-            int storedCardNumber = atoi(cardNumberStr);
-            if (storedCardNumber == cardNumber) {
-                // Update the PIN with hash
-                fprintf(tempFile, "%s | %s | %s | %s | %s | %s | %s\n", 
-                        cardID, accountID, cardNumberStr, cardType, expiryDate, status, pinHash);
-                updated = true;
-            } else {
-                fputs(line, tempFile);
-            }
-        } else {
-            fputs(line, tempFile);
-        }
-    }
-    
-    fclose(file);
-    fclose(tempFile);
-    
-    if (updated) {
-        // Replace original file with updated one
-        if (remove(getCardFilePath()) == 0 && 
-            rename(tempFileName, getCardFilePath()) == 0) {
-            
-            char logMsg[100];
-            sprintf(logMsg, "PIN hash updated for card %d", cardNumber);
-            writeAuditLog("SECURITY", logMsg);
-            return true;
-        }
-    }
-    
-    // Remove temp file if update was not successful
-    remove(tempFileName);
-    return false;
-}
-
-// Get card holder's name by looking up customer info by card number
-bool getCardHolderName(int cardNumber, char* name, size_t nameSize) {
-    if (name == NULL || nameSize <= 0) {
-        return false;
-    }
-    
-    // First, find the account ID from the card number
-    FILE* cardFile = fopen(getCardFilePath(), "r");
-    if (cardFile == NULL) {
-        writeErrorLog("Failed to open card.txt file");
-        return false;
-    }
-    
-    char line[256];
-    char accountID[10] = "";
-    
-    // Skip header lines
-    fgets(line, sizeof(line), cardFile);
-    fgets(line, sizeof(line), cardFile);
-    
-    char cardID[10], accID[10], cardNumberStr[20], cardType[10], expiryDate[15], status[10], pinHash[65];
-    
-    while (fgets(line, sizeof(line), cardFile) != NULL) {
-        if (sscanf(line, "%s | %s | %s | %s | %s | %s | %s", 
-                   cardID, accID, cardNumberStr, cardType, expiryDate, status, pinHash) >= 7) {
-            int storedCardNumber = atoi(cardNumberStr);
-            if (storedCardNumber == cardNumber) {
-                strcpy(accountID, accID);
-                break;
-            }
-        }
-    }
-    
-    fclose(cardFile);
-    
-    if (strlen(accountID) == 0) {
-        return false; // Card number not found
-    }
-    
-    // Get customer name directly from customer.txt using the account ID
-    FILE* customerFile = fopen(getCustomerFilePath(), "r");
-    if (customerFile == NULL) {
-        writeErrorLog("Failed to open customer.txt file");
-        return false;
-    }
-    
-    bool found = false;
-    
-    // Skip header lines
-    fgets(line, sizeof(line), customerFile);
-    fgets(line, sizeof(line), customerFile);
-    
-    // Format: Customer ID | Account ID | Account Holder Name | Type | Status | Balance
-    char customerID[15], accIDFromFile[15], holderName[100], type[20], accountStatus[20], balance[20];
-    
-    while (fgets(line, sizeof(line), customerFile) != NULL) {
-        if (sscanf(line, "%s | %s | %[^|] | %s | %s | %s", 
-                   customerID, accIDFromFile, holderName, type, accountStatus, balance) >= 6) {
-            if (strcmp(accIDFromFile, accountID) == 0) {
-                // Trim any leading/trailing spaces from holder name
-                int start = 0, end = strlen(holderName) - 1;
-                while (holderName[start] == ' ') start++;
-                while (end > start && holderName[end] == ' ') end--;
-                holderName[end + 1] = '\0';
-                
-                strncpy(name, &holderName[start], nameSize - 1);
-                name[nameSize - 1] = '\0';
-                found = true;
-                break;
-            }
-        }
-    }
-    
-    fclose(customerFile);
-    return found;
-}
-
-// Function to generate a card number in the format found in init_data_files.c
-char* generateCardNumber() {
-    char* cardNumber = (char*)malloc(20); // 16 digits + 3 dashes + null terminator
-    if (!cardNumber) {
-        writeErrorLog("Failed to allocate memory for card number");
+// Get account number associated with a card
+char* getAccountNumberForCard(int cardNumber, char* accountNumber, size_t size) {
+    if (!accountNumber || size == 0) {
+        writeErrorLog("Invalid output buffer in getAccountNumberForCard");
         return NULL;
     }
     
-    // Format: XXXX-XXXX-XXXX-XXXX
-    sprintf(cardNumber, "%04d-%04d-%04d-%04d", 
-            4000 + (rand() % 999),  // Start with 4 for "Visa-like" numbers
-            1000 + (rand() % 9000),
-            1000 + (rand() % 9000),
-            1000 + (rand() % 9000));
+    MYSQL *conn = db_get_connection();
+    if (!conn) {
+        writeErrorLog("Failed to get database connection in getAccountNumberForCard");
+        return NULL;
+    }
     
-    return cardNumber;
+    char query[200];
+    sprintf(query, "SELECT account_id FROM %s WHERE %s = '%d'", 
+            TABLE_CARDS, COL_CARD_NUMBER, cardNumber);
+    
+    char* result = NULL;
+    
+    if (mysql_query(conn, query) == 0) {
+        MYSQL_RES *res = mysql_store_result(conn);
+        if (res) {
+            MYSQL_ROW row = mysql_fetch_row(res);
+            if (row && row[0]) {
+                strncpy(accountNumber, row[0], size - 1);
+                accountNumber[size - 1] = '\0';
+                result = accountNumber;
+            }
+            mysql_free_result(res);
+        }
+    } else {
+        writeErrorLog("MySQL query error in getAccountNumberForCard: %s", mysql_error(conn));
+    }
+    
+    db_release_connection(conn);
+    return result;
 }
 
-// Function to generate a 3-digit CVV
-int generateCVV() {
-    return 100 + (rand() % 900); // 3-digit number between 100 and 999
+// Verify PIN for a card
+bool verifyCardPin(int cardNumber, const char* pinHash) {
+    if (!pinHash) {
+        writeErrorLog("NULL PIN hash provided to verifyCardPin");
+        return false;
+    }
+    
+    MYSQL *conn = db_get_connection();
+    if (!conn) {
+        writeErrorLog("Failed to get database connection in verifyCardPin");
+        return false;
+    }
+    
+    char query[300];
+    sprintf(query, "SELECT COUNT(*) FROM %s WHERE %s = '%d' AND pin_hash = '%s'", 
+            TABLE_CARDS, COL_CARD_NUMBER, cardNumber, pinHash);
+    
+    bool verified = false;
+    
+    if (mysql_query(conn, query) == 0) {
+        MYSQL_RES *result = mysql_store_result(conn);
+        if (result) {
+            MYSQL_ROW row = mysql_fetch_row(result);
+            if (row && row[0]) {
+                verified = (atoi(row[0]) > 0);
+            }
+            mysql_free_result(result);
+        }
+    } else {
+        writeErrorLog("MySQL query error in verifyCardPin: %s", mysql_error(conn));
+    }
+    
+    db_release_connection(conn);
+    return verified;
+}
+
+// Update PIN for a card
+bool updateCardPin(int cardNumber, const char* newPinHash) {
+    if (!newPinHash) {
+        writeErrorLog("NULL PIN hash provided to updateCardPin");
+        return false;
+    }
+    
+    MYSQL *conn = db_get_connection();
+    if (!conn) {
+        writeErrorLog("Failed to get database connection in updateCardPin");
+        return false;
+    }
+    
+    char query[300];
+    sprintf(query, "UPDATE %s SET pin_hash = '%s' WHERE %s = '%d'", 
+            TABLE_CARDS, newPinHash, COL_CARD_NUMBER, cardNumber);
+    
+    bool success = false;
+    
+    if (mysql_query(conn, query) == 0) {
+        if (mysql_affected_rows(conn) > 0) {
+            success = true;
+            
+            // Log to audit log
+            char audit_query[400];
+            sprintf(audit_query, 
+                "INSERT INTO %s (action, entity_type, entity_id, details) "
+                "VALUES ('PIN_CHANGE', 'CARD', '%d', 'PIN changed by user')",
+                TABLE_AUDIT_LOGS, cardNumber);
+            
+            if (mysql_query(conn, audit_query) != 0) {
+                writeErrorLog("Failed to log PIN change in audit log: %s", mysql_error(conn));
+            }
+            
+            writeInfoLog("PIN updated for card %d", cardNumber);
+        } else {
+            writeErrorLog("No rows affected when updating PIN for card %d", cardNumber);
+        }
+    } else {
+        writeErrorLog("MySQL query error in updateCardPin: %s", mysql_error(conn));
+    }
+    
+    db_release_connection(conn);
+    return success;
+}
+
+// Record a transaction
+bool recordTransaction(const char* transactionId, int cardNumber, const char* accountNumber, 
+                       const char* type, double amount, double balanceBefore, 
+                       double balanceAfter, const char* remarks) {
+    if (!transactionId || !accountNumber || !type || !remarks) {
+        writeErrorLog("NULL parameters provided to recordTransaction");
+        return false;
+    }
+    
+    MYSQL *conn = db_get_connection();
+    if (!conn) {
+        writeErrorLog("Failed to get database connection in recordTransaction");
+        return false;
+    }
+    
+    char query[600];
+    sprintf(query, 
+        "INSERT INTO %s (transaction_id, card_number, account_number, transaction_type, "
+        "amount, balance_before, balance_after, status, remarks) "
+        "VALUES ('%s', '%d', '%s', '%s', %.2f, %.2f, %.2f, 'SUCCESS', '%s')",
+        TABLE_TRANSACTIONS, transactionId, cardNumber, accountNumber, type, 
+        amount, balanceBefore, balanceAfter, remarks);
+    
+    bool success = false;
+    
+    if (mysql_query(conn, query) == 0) {
+        success = true;
+        writeInfoLog("Transaction recorded: %s, Card: %d, Account: %s, Type: %s, Amount: %.2f", 
+                   transactionId, cardNumber, accountNumber, type, amount);
+    } else {
+        writeErrorLog("MySQL query error in recordTransaction: %s", mysql_error(conn));
+    }
+    
+    db_release_connection(conn);
+    return success;
+}
+
+// Get recent transactions for an account
+bool getRecentTransactions(const char* accountNumber, int count, 
+                           void (*callback)(const char*, int, const char*, const char*, 
+                                           double, double, double, const char*, const char*, void*), 
+                           void* userData) {
+    if (!accountNumber || count <= 0 || !callback) {
+        writeErrorLog("Invalid parameters provided to getRecentTransactions");
+        return false;
+    }
+    
+    MYSQL *conn = db_get_connection();
+    if (!conn) {
+        writeErrorLog("Failed to get database connection in getRecentTransactions");
+        return false;
+    }
+    
+    char query[400];
+    sprintf(query, 
+        "SELECT transaction_id, card_number, account_number, transaction_type, "
+        "amount, balance_before, balance_after, transaction_date, remarks "
+        "FROM %s WHERE account_number = '%s' "
+        "ORDER BY transaction_date DESC LIMIT %d",
+        TABLE_TRANSACTIONS, accountNumber, count);
+    
+    bool success = false;
+    
+    if (mysql_query(conn, query) == 0) {
+        MYSQL_RES *result = mysql_store_result(conn);
+        if (result) {
+            MYSQL_ROW row;
+            while ((row = mysql_fetch_row(result))) {
+                callback(
+                    row[0],                  // transaction_id
+                    atoi(row[1]),            // card_number
+                    row[2],                  // account_number
+                    row[3],                  // transaction_type
+                    atof(row[4]),            // amount
+                    atof(row[5]),            // balance_before
+                    atof(row[6]),            // balance_after
+                    row[7],                  // transaction_date
+                    row[8],                  // remarks
+                    userData
+                );
+            }
+            mysql_free_result(result);
+            success = true;
+        }
+    } else {
+        writeErrorLog("MySQL query error in getRecentTransactions: %s", mysql_error(conn));
+    }
+    
+    db_release_connection(conn);
+    return success;
+}
+
+// Track daily withdrawal
+bool trackDailyWithdrawal(int cardNumber, double amount) {
+    MYSQL *conn = db_get_connection();
+    if (!conn) {
+        writeErrorLog("Failed to get database connection in trackDailyWithdrawal");
+        return false;
+    }
+    
+    char query[300];
+    sprintf(query, 
+        "INSERT INTO %s (card_number, amount, withdrawal_date) "
+        "VALUES ('%d', %.2f, CURDATE())",
+        TABLE_DAILY_WITHDRAWALS, cardNumber, amount);
+    
+    bool success = false;
+    
+    if (mysql_query(conn, query) == 0) {
+        success = true;
+        writeInfoLog("Daily withdrawal tracked: Card %d, Amount %.2f", cardNumber, amount);
+    } else {
+        writeErrorLog("MySQL query error in trackDailyWithdrawal: %s", mysql_error(conn));
+    }
+    
+    db_release_connection(conn);
+    return success;
+}
+
+// Get total daily withdrawals for a card
+double getDailyWithdrawalTotal(int cardNumber) {
+    MYSQL *conn = db_get_connection();
+    if (!conn) {
+        writeErrorLog("Failed to get database connection in getDailyWithdrawalTotal");
+        return -1.0;
+    }
+    
+    char query[300];
+    sprintf(query, 
+        "SELECT COALESCE(SUM(amount), 0) FROM %s "
+        "WHERE card_number = '%d' AND withdrawal_date = CURDATE()",
+        TABLE_DAILY_WITHDRAWALS, cardNumber);
+    
+    double total = -1.0;
+    
+    if (mysql_query(conn, query) == 0) {
+        MYSQL_RES *result = mysql_store_result(conn);
+        if (result) {
+            MYSQL_ROW row = mysql_fetch_row(result);
+            if (row && row[0]) {
+                total = atof(row[0]);
+            } else {
+                total = 0.0;  // No withdrawals today
+            }
+            mysql_free_result(result);
+        }
+    } else {
+        writeErrorLog("MySQL query error in getDailyWithdrawalTotal: %s", mysql_error(conn));
+    }
+    
+    db_release_connection(conn);
+    return total;
+}
+
+// Get daily withdrawal limit for a card
+double getDailyWithdrawalLimit(int cardNumber) {
+    MYSQL *conn = db_get_connection();
+    if (!conn) {
+        writeErrorLog("Failed to get database connection in getDailyWithdrawalLimit");
+        return -1.0;
+    }
+    
+    char query[200];
+    sprintf(query, "SELECT daily_limit FROM %s WHERE %s = '%d'", 
+            TABLE_CARDS, COL_CARD_NUMBER, cardNumber);
+    
+    double limit = -1.0;
+    
+    if (mysql_query(conn, query) == 0) {
+        MYSQL_RES *result = mysql_store_result(conn);
+        if (result) {
+            MYSQL_ROW row = mysql_fetch_row(result);
+            if (row && row[0]) {
+                limit = atof(row[0]);
+            }
+            mysql_free_result(result);
+        }
+    } else {
+        writeErrorLog("MySQL query error in getDailyWithdrawalLimit: %s", mysql_error(conn));
+    }
+    
+    db_release_connection(conn);
+    return limit;
 }
 

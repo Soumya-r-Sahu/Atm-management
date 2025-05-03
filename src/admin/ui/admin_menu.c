@@ -3,18 +3,12 @@
 #include "../../../include/admin/management/user/admin_account_manager.h"
 #include "../../../include/admin/management/system/admin_system_manager.h"
 #include "../../../include/common/utils/logger.h"
-#include "../../../include/netbanking/netbanking.h"
-#include "../../../include/upi_transaction/upi_transaction.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
 
 // Forward declarations for functions used in the menu
-void manage_netbanking_services(AdminUser* admin);
-void configure_upi_services(AdminUser* admin);
-void view_digital_transaction_reports(AdminUser* admin);
-void manage_virtual_cards(AdminUser* admin);
 void show_create_admin_menu(AdminUser* admin);
 void show_change_password_menu(AdminUser* admin);
 
@@ -49,23 +43,16 @@ void show_admin_main_menu(AdminUser* admin) {
         printf("Welcome, %s\n", admin->username);
         printf("---------------------------------------\n");
         
-        // Role-based menu display
+        // Simplified role system - just SuperAdmin or regular admin
         bool isSuperAdmin = admin_has_role(admin, "SuperAdmin");
-        bool isATMAdmin = admin_has_role(admin, "ATMAdmin") || isSuperAdmin;
-        bool isUserAdmin = admin_has_role(admin, "UserAdmin") || isSuperAdmin;
-        bool isNetbankingAdmin = admin_has_role(admin, "NetbankingAdmin") || isSuperAdmin;
         
-        // User Management Options - for UserAdmin and SuperAdmin roles
-        if (isUserAdmin) {
-            printf("1. Create New Customer Account\n");
-            printf("4. Regenerate Card PIN\n");
-            printf("5. Block/Unblock Card\n");
-        }
+        // User Management Options
+        printf("1. Create New Customer Account\n");
+        printf("4. Regenerate Card PIN\n");
+        printf("5. Block/Unblock Card\n");
         
-        // ATM Management Options - for ATMAdmin and SuperAdmin roles
-        if (isATMAdmin) {
-            printf("2. Toggle ATM/Banking Service Status\n");
-        }
+        // ATM Management Options
+        printf("2. Toggle ATM/Banking Service Status\n");
         
         // Common options for all admin roles
         printf("3. View System Logs\n");
@@ -74,20 +61,12 @@ void show_admin_main_menu(AdminUser* admin) {
         if (isSuperAdmin) {
             printf("6. Manage System Configuration\n");
             printf("7. Back Up System Data\n");
-            printf("14. Create New Admin Account\n");
-        }
-        
-        // Netbanking/Digital Services options - for NetbankingAdmin and SuperAdmin
-        if (isNetbankingAdmin) {
-            printf("10. Manage Netbanking Services\n");
-            printf("11. Configure UPI Services\n");
-            printf("12. View Digital Transaction Reports\n");
-            printf("13. Manage Virtual Cards\n");
+            printf("9. Create New Admin Account\n");
         }
         
         // Available to all admin users
         printf("8. Change Admin Password\n");
-        printf("9. Exit\n");
+        printf("0. Exit\n");
         printf("---------------------------------------\n");
         printf("Enter choice: ");
         
@@ -111,19 +90,11 @@ void show_admin_main_menu(AdminUser* admin) {
         // Process choice
         switch (choice) {
             case 1:
-                if (isUserAdmin) {
-                    create_account(admin);
-                } else {
-                    printf("Access denied: You don't have permission for this operation.\n");
-                }
+                create_account(admin);
                 break;
                 
             case 2:
-                if (isATMAdmin) {
-                    toggle_service_mode(admin);
-                } else {
-                    printf("Access denied: You don't have permission for this operation.\n");
-                }
+                toggle_service_mode(admin);
                 break;
                 
             case 3:
@@ -132,19 +103,11 @@ void show_admin_main_menu(AdminUser* admin) {
                 break;
                 
             case 4:
-                if (isUserAdmin) {
-                    regenerate_card_pin(admin);
-                } else {
-                    printf("Access denied: You don't have permission for this operation.\n");
-                }
+                regenerate_card_pin(admin);
                 break;
                 
             case 5:
-                if (isUserAdmin) {
-                    toggle_card_status(admin);
-                } else {
-                    printf("Access denied: You don't have permission for this operation.\n");
-                }
+                toggle_card_status(admin);
                 break;
                 
             case 6:
@@ -169,48 +132,16 @@ void show_admin_main_menu(AdminUser* admin) {
                 break;
                 
             case 9:
-                printf("\nLogging out and exiting...\n");
-                running = false;
-                break;
-                
-            case 10:
-                if (isNetbankingAdmin) {
-                    manage_netbanking_services(admin);
-                } else {
-                    printf("Access denied: You don't have permission for this operation.\n");
-                }
-                break;
-                
-            case 11:
-                if (isNetbankingAdmin) {
-                    configure_upi_services(admin);
-                } else {
-                    printf("Access denied: You don't have permission for this operation.\n");
-                }
-                break;
-                
-            case 12:
-                if (isNetbankingAdmin) {
-                    view_digital_transaction_reports(admin);
-                } else {
-                    printf("Access denied: You don't have permission for this operation.\n");
-                }
-                break;
-                
-            case 13:
-                if (isNetbankingAdmin) {
-                    manage_virtual_cards(admin);
-                } else {
-                    printf("Access denied: You don't have permission for this operation.\n");
-                }
-                break;
-                
-            case 14:
                 if (isSuperAdmin) {
                     show_create_admin_menu(admin);
                 } else {
                     printf("Access denied: You don't have permission for this operation.\n");
                 }
+                break;
+                
+            case 0:
+                printf("\nLogging out and exiting...\n");
+                running = false;
                 break;
                 
             default:
@@ -256,207 +187,6 @@ void show_change_password_menu(AdminUser* admin) {
         printf("Password changed successfully.\n");
     } else {
         printf("Failed to change password. Please verify your current password is correct.\n");
-    }
-}
-
-// Manage netbanking services
-void manage_netbanking_services(AdminUser* admin) {
-    if (!admin || !admin->is_logged_in) {
-        printf("Error: Not authorized. Please log in first.\n");
-        return;
-    }
-    
-    printf("\n=======================================\n");
-    printf("=      MANAGE NETBANKING SERVICES     =\n");
-    printf("=======================================\n");
-    
-    int choice;
-    
-    printf("1. Enable/Disable Netbanking Services\n");
-    printf("2. View Registered Netbanking Users\n");
-    printf("3. Reset User Netbanking Password\n");
-    printf("4. Set Transaction Limits\n");
-    printf("5. Configure Two-Factor Authentication\n");
-    printf("6. Back to Main Menu\n");
-    printf("---------------------------------------\n");
-    printf("Enter choice: ");
-    
-    scanf("%d", &choice);
-    getchar(); // Clear input buffer
-    
-    switch (choice) {
-        case 1:
-            printf("Netbanking service status toggled.\n");
-            writeAuditLog("ADMIN", "Netbanking service status changed");
-            break;
-        case 2:
-            printf("Displaying registered netbanking users...\n");
-            // Code to display netbanking users would go here
-            break;
-        case 3:
-            printf("User netbanking password has been reset.\n");
-            writeAuditLog("ADMIN", "Reset user netbanking password");
-            break;
-        case 4:
-            printf("Transaction limits updated.\n");
-            writeAuditLog("ADMIN", "Updated netbanking transaction limits");
-            break;
-        case 5:
-            printf("Two-factor authentication settings updated.\n");
-            writeAuditLog("ADMIN", "Updated 2FA settings");
-            break;
-        case 6:
-            return;
-        default:
-            printf("Invalid option. Please try again.\n");
-            break;
-    }
-}
-
-// Configure UPI services
-void configure_upi_services(AdminUser* admin) {
-    if (!admin || !admin->is_logged_in) {
-        printf("Error: Not authorized. Please log in first.\n");
-        return;
-    }
-    
-    printf("\n=======================================\n");
-    printf("=         CONFIGURE UPI SERVICES      =\n");
-    printf("=======================================\n");
-    
-    int choice;
-    
-    printf("1. Enable/Disable UPI Platform\n");
-    printf("2. Set UPI Transaction Limits\n");
-    printf("3. Manage UPI Merchants\n");
-    printf("4. View UPI Statistics\n");
-    printf("5. Back to Main Menu\n");
-    printf("---------------------------------------\n");
-    printf("Enter choice: ");
-    
-    scanf("%d", &choice);
-    getchar(); // Clear input buffer
-    
-    switch (choice) {
-        case 1:
-            printf("UPI platform status toggled.\n");
-            writeAuditLog("ADMIN", "UPI platform status changed");
-            break;
-        case 2:
-            printf("UPI transaction limits updated.\n");
-            writeAuditLog("ADMIN", "Updated UPI transaction limits");
-            break;
-        case 3:
-            printf("UPI merchant settings updated.\n");
-            writeAuditLog("ADMIN", "Updated UPI merchant settings");
-            break;
-        case 4:
-            printf("Displaying UPI statistics...\n");
-            // Code to display UPI statistics would go here
-            break;
-        case 5:
-            return;
-        default:
-            printf("Invalid option. Please try again.\n");
-            break;
-    }
-}
-
-// View digital transaction reports
-void view_digital_transaction_reports(AdminUser* admin) {
-    if (!admin || !admin->is_logged_in) {
-        printf("Error: Not authorized. Please log in first.\n");
-        return;
-    }
-    
-    printf("\n=======================================\n");
-    printf("=    DIGITAL TRANSACTION REPORTS      =\n");
-    printf("=======================================\n");
-    
-    int choice;
-    
-    printf("1. Daily Transactions Summary\n");
-    printf("2. Monthly Transaction Report\n");
-    printf("3. Failed Transaction Analysis\n");
-    printf("4. High-Value Transaction Alert\n");
-    printf("5. Back to Main Menu\n");
-    printf("---------------------------------------\n");
-    printf("Enter choice: ");
-    
-    scanf("%d", &choice);
-    getchar(); // Clear input buffer
-    
-    switch (choice) {
-        case 1:
-            printf("Displaying daily transaction summary...\n");
-            // Code to display daily transactions would go here
-            break;
-        case 2:
-            printf("Displaying monthly transaction report...\n");
-            // Code to display monthly report would go here
-            break;
-        case 3:
-            printf("Analyzing failed transactions...\n");
-            // Code to analyze failed transactions would go here
-            break;
-        case 4:
-            printf("Displaying high-value transaction alerts...\n");
-            // Code to display high-value alerts would go here
-            break;
-        case 5:
-            return;
-        default:
-            printf("Invalid option. Please try again.\n");
-            break;
-    }
-}
-
-// Manage virtual cards
-void manage_virtual_cards(AdminUser* admin) {
-    if (!admin || !admin->is_logged_in) {
-        printf("Error: Not authorized. Please log in first.\n");
-        return;
-    }
-    
-    printf("\n=======================================\n");
-    printf("=         MANAGE VIRTUAL CARDS        =\n");
-    printf("=======================================\n");
-    
-    int choice;
-    
-    printf("1. Issue New Virtual Card\n");
-    printf("2. Block/Unblock Virtual Card\n");
-    printf("3. Set Virtual Card Limits\n");
-    printf("4. View Virtual Card Transactions\n");
-    printf("5. Back to Main Menu\n");
-    printf("---------------------------------------\n");
-    printf("Enter choice: ");
-    
-    scanf("%d", &choice);
-    getchar(); // Clear input buffer
-    
-    switch (choice) {
-        case 1:
-            printf("New virtual card issued successfully.\n");
-            writeAuditLog("ADMIN", "Issued new virtual card");
-            break;
-        case 2:
-            printf("Virtual card status updated.\n");
-            writeAuditLog("ADMIN", "Updated virtual card status");
-            break;
-        case 3:
-            printf("Virtual card limits updated.\n");
-            writeAuditLog("ADMIN", "Updated virtual card limits");
-            break;
-        case 4:
-            printf("Displaying virtual card transactions...\n");
-            // Code to display virtual card transactions would go here
-            break;
-        case 5:
-            return;
-        default:
-            printf("Invalid option. Please try again.\n");
-            break;
     }
 }
 
@@ -511,19 +241,17 @@ void show_create_admin_menu(AdminUser* admin) {
     printf("1. SuperAdmin - Full system access\n");
     printf("2. ATMAdmin - ATM management access\n");
     printf("3. UserAdmin - Customer account management access\n");
-    printf("4. NetbankingAdmin - Digital banking service access\n");
     
     // Role selection
-    const int MAX_AVAILABLE_ROLES = 4;
-    const char* available_roles[4] = {
+    const int MAX_AVAILABLE_ROLES = 3;
+    const char* available_roles[3] = {
         "SuperAdmin",
         "ATMAdmin",
-        "UserAdmin",
-        "NetbankingAdmin"
+        "UserAdmin"
     };
     
     // Array to track selected roles
-    bool selected_roles[4] = {false, false, false, false};
+    bool selected_roles[3] = {false, false, false};
     int num_selected_roles = 0;
     
     // Get role selections
