@@ -6,15 +6,11 @@
 #ifndef DB_CONFIG_H
 #define DB_CONFIG_H
 
-/**
- * Database connection parameters
- * These should be changed according to your MySQL setup
- */
-#define DB_HOST "localhost"
-#define DB_USER "root"     // Default MySQL user for development
-#define DB_PASS "password" // Use appropriate password for your environment
-#define DB_NAME "atm_management"
-#define DB_PORT 3306
+// Include the unified database configuration
+#include "../../../include/common/database/db_unified_config.h"
+
+// This file now serves as a compatibility layer and can be removed in future versions
+// All actual configuration has been moved to db_unified_config.h
 
 /* Database table names - centralized for consistency */
 #define TABLE_CUSTOMERS "customers"

@@ -1,0 +1,41 @@
+# ATM Project .gitignore file
+
+# Ignore tests directory
+/tests/
+
+# Build artifacts
+*.o
+*.obj
+*.exe
+*.out
+*.a
+*.so
+*.dll
+*.lib
+
+# Log files
+*.log
+/logs/
+
+# Temporary files
+*.tmp
+*~
+temp/
+tmp/
+
+# Database files
+*.db
+*.sqlite
+
+# Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS specific files
+.DS_Store
+Thumbs.db
+
+# Backup files
+*.bak

@@ -8,13 +8,15 @@
 #include <string.h>
 #include <stdbool.h>
 #include <unistd.h>
-#include "../../backend/c_backend/include/common/logger.h"
-#include "../../backend/c_backend/include/common/database.h"
-#include "../../backend/c_backend/include/atm/atm_main.h"
+#include "../../include/common/utils/logger.h"
+#include "../../include/common/database/database.h"
+#include "../../include/atm/atm_main.h"
+#include "../../include/common/database/card_account_management.h"
 #include "menu_utils.h"
 #include "customer_menu.h"
 #include "admin_menu.h"
 #include "transaction_menu.h"
+#include "cbs_admin_menu.h"
 
 // Function prototypes
 void displayMainMenu(void);
@@ -59,8 +61,8 @@ int main(int argc, char *argv[]) {
         clearScreen();
         displayMainMenu();
         
-        int choice;
-        printf("\nEnter your choice (1-4): ");
+    int choice;
+        printf("\nEnter your choice (1-6): ");
         if (scanf("%d", &choice) != 1) {
             // Clear input buffer
             int c;
@@ -73,8 +75,7 @@ int main(int argc, char *argv[]) {
         // Clear input buffer
         int c;
         while ((c = getchar()) != '\n' && c != EOF);
-        
-        if (choice == 4) {
+          if (choice == 6) {
             running = false;
         } else {
             handleMainMenuChoice(choice);
@@ -104,7 +105,9 @@ void displayMainMenu(void) {
     printf("1. Customer Login\n");
     printf("2. Admin Login\n");
     printf("3. ATM Card Operations\n");
-    printf("4. Exit\n");
+    printf("4. Core Banking Transactions\n");
+    printf("5. Core Banking Admin\n");
+    printf("6. Exit\n");
 }
 
 /**
@@ -155,7 +158,7 @@ void handleMainMenuChoice(int choice) {
             authenticated = authenticateUser(username, password, &userType);
             
             if (authenticated) {
-                runAdminMenu(username, userType);
+                runAdminMenu(username);
             } else {
                 printf("\nInvalid username or password. Please try again.\n");
                 sleep(2);
@@ -163,11 +166,82 @@ void handleMainMenuChoice(int choice) {
             break;
             
         case 3: // ATM Card Operations
-            runTransactionMenu();
+            // TODO: Implement ATM card operations
+            clearScreen();
+            printHeader("ATM CARD OPERATIONS");
+            printf("\nThis feature is coming soon.\n");
+            printf("\nPress Enter to continue...");
+            getchar();
+            break;
+            
+        case 4: // Core Banking Transactions
+            clearScreen();
+            printHeader("CORE BANKING TRANSACTIONS");
+            printf("\n");
+            
+            // Get card number
+            int cardNumber;
+            printf("Enter Card Number: ");
+            if (scanf("%d", &cardNumber) != 1) {
+                // Clear input buffer
+                int c;
+                while ((c = getchar()) != '\n' && c != EOF);
+                printf("\nInvalid card number. Please try again.\n");
+                sleep(2);
+                break;
+            }
+            
+            // Clear input buffer
+            int c;
+            while ((c = getchar()) != '\n' && c != EOF);
+            
+            // Validate card exists
+            if (!cbs_card_exists(cardNumber)) {
+                printf("\nCard not found. Please try again.\n");
+                sleep(2);
+                break;
+            }
+            
+            // Check if card is active
+            if (!cbs_is_card_active(cardNumber)) {
+                printf("\nThis card is inactive or blocked.\n");
+                sleep(2);
+                break;
+            }
+            
+            // Get PIN
+            int pin;
+            printf("Enter PIN: ");
+            if (scanf("%d", &pin) != 1) {
+                // Clear input buffer
+                int c;
+                while ((c = getchar()) != '\n' && c != EOF);
+                printf("\nInvalid PIN. Please try again.\n");
+                sleep(2);
+                break;
+            }
+            
+            // Clear input buffer
+            c = 0;
+            while ((c = getchar()) != '\n' && c != EOF);
+            
+            // Validate PIN
+            if (!cbs_validate_card(cardNumber, pin)) {
+                printf("\nInvalid PIN. Please try again.\n");
+                sleep(2);
+                break;
+            }
+              // Run transaction menu
+            runTransactionMenu(cardNumber);
+            break;
+            
+        case 5: // Core Banking Admin
+            // Run CBS admin menu
+            runCBSAdminMenu();
             break;
             
         default:
-            printf("Invalid choice. Please try again.\n");
+            printf("\nInvalid choice. Please try again.\n");
             sleep(2);
             break;
     }

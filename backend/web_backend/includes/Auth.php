@@ -21,8 +21,31 @@ class Auth {
             return null;
         }
         
-        // For demo purposes, return a mock user
-        // In a real application, this would fetch the user from the database
+        try {
+            $db = Database::getInstance();
+            $userId = $_SESSION['user_id'];
+            
+            // Try to fetch user from database
+            $query = "SELECT user_id, name, email, role, status, last_login 
+                     FROM users 
+                     WHERE user_id = ? AND status = 'ACTIVE'";
+            
+            $userData = $db->selectOne($query, [$userId]);
+            
+            if ($userData) {
+                return [
+                    'id' => $userData['user_id'],
+                    'name' => $userData['name'],
+                    'email' => $userData['email'],
+                    'role' => $userData['role'],
+                    'last_login' => $userData['last_login']
+                ];
+            }
+        } catch (Exception $e) {
+            error_log("Error fetching user data: " . $e->getMessage());
+        }
+        
+        // Fallback to session data
         return [
             'id' => $_SESSION['user_id'] ?? 1,
             'name' => $_SESSION['user_name'] ?? 'John Doe',
@@ -52,38 +75,84 @@ class Auth {
      * @return bool True if authentication successful, false otherwise
      */
     public static function login($username, $password, $remember = false) {
-        // For demo purposes, accept any login with demo credentials
-        // In a real application, this would verify against the database
-        if (($username === 'customer@example.com' && $password === 'password123') ||
-            ($username === 'admin@example.com' && $password === 'admin123')) {
+        try {
+            $db = Database::getInstance();
             
-            // Set session variables
-            $_SESSION['user_id'] = ($username === 'admin@example.com') ? 2 : 1;
-            $_SESSION['user_name'] = ($username === 'admin@example.com') ? 'Admin User' : 'John Doe';
-            $_SESSION['user_email'] = $username;
-            $_SESSION['user_role'] = ($username === 'admin@example.com') ? 'Admin' : 'Customer';
-            $_SESSION['last_activity'] = time();
+            // Prepare the query with parameterized statement for security
+            $query = "SELECT user_id, name, email, password_hash, role, status 
+                     FROM users 
+                     WHERE email = ? AND status = 'ACTIVE'";
             
-            // Set remember me cookie if requested
-            if ($remember) {
-                $token = bin2hex(random_bytes(32));
-                $expires = time() + (86400 * 30); // 30 days
-                setcookie('remember_token', $token, $expires, '/', '', false, true);
+            $userData = $db->selectOne($query, [$username]);
+            
+            // If user found and password matches
+            if ($userData && password_verify($password, $userData['password_hash'])) {
+                // Set session variables
+                $_SESSION['user_id'] = $userData['user_id'];
+                $_SESSION['user_name'] = $userData['name'];
+                $_SESSION['user_email'] = $userData['email'];
+                $_SESSION['user_role'] = $userData['role'];
+                $_SESSION['last_activity'] = time();
                 
-                // In a real application, store the token in the database
-                // associated with the user
+                // Set remember me cookie if requested
+                if ($remember) {
+                    $token = bin2hex(random_bytes(32));
+                    $expires = time() + (86400 * 30); // 30 days
+                    setcookie('remember_token', $token, $expires, '/', '', false, true);
+                    
+                    // Store the token in the database
+                    $db->insert('user_tokens', [
+                        'user_id' => $userData['user_id'],
+                        'token' => hash('sha256', $token),
+                        'expires' => date('Y-m-d H:i:s', $expires),
+                        'user_agent' => $_SERVER['HTTP_USER_AGENT']
+                    ]);
+                }
+                
+                // Update last login timestamp
+                $db->update('users', 
+                    ['last_login' => date('Y-m-d H:i:s')],
+                    'user_id = ?', 
+                    [$userData['user_id']]
+                );
+                
+                // Log the login
+                self::logActivity('Authentication', 'Login', 'Success');
+                
+                return true;
             }
             
-            // Log the login
-            self::logActivity('Authentication', 'Login', 'Success');
+            // Fallback to hardcoded credentials for demo purposes
+            // Remove this in production
+            if (($username === 'customer@example.com' && $password === 'password123') ||
+                ($username === 'admin@example.com' && $password === 'admin123')) {
+                
+                // Set session variables
+                $_SESSION['user_id'] = ($username === 'admin@example.com') ? 2 : 1;
+                $_SESSION['user_name'] = ($username === 'admin@example.com') ? 'Admin User' : 'John Doe';
+                $_SESSION['user_email'] = $username;
+                $_SESSION['user_role'] = ($username === 'admin@example.com') ? 'Admin' : 'Customer';
+                $_SESSION['last_activity'] = time();
+                
+                if ($remember) {
+                    $token = bin2hex(random_bytes(32));
+                    $expires = time() + (86400 * 30); // 30 days
+                    setcookie('remember_token', $token, $expires, '/', '', false, true);
+                }
+                
+                self::logActivity('Authentication', 'Login', 'Success');
+                
+                return true;
+            }
             
-            return true;
+            // Log the failed login
+            self::logActivity('Authentication', 'Login', 'Failed', 'Invalid username or password');
+            return false;
+        } catch (Exception $e) {
+            error_log("Authentication error: " . $e->getMessage());
+            self::logActivity('Authentication', 'Login', 'Failed', 'System error: ' . $e->getMessage());
+            return false;
         }
-        
-        // Log the failed login
-        self::logActivity('Authentication', 'Login', 'Failed', 'Invalid username or password');
-        
-        return false;
     }
     
     /**
@@ -230,9 +299,27 @@ class Auth {
         // Get user agent
         $userAgent = $_SERVER['HTTP_USER_AGENT'] ?? '';
         
-        // In a real application, insert the log into the database
-        // For demo purposes, just return true
-        return true;
+        // Log to the database when possible
+        try {
+            $db = Database::getInstance();
+            
+            $logData = [
+                'user_id' => $userId,
+                'category' => $category,
+                'action' => $action,
+                'status' => $status,
+                'details' => $details,
+                'ip_address' => $ipAddress,
+                'user_agent' => substr($userAgent, 0, 255),
+                'created_at' => date('Y-m-d H:i:s')
+            ];
+            
+            $db->insert('system_logs', $logData);
+            return true;
+        } catch (Exception $e) {
+            error_log("Failed to log activity: " . $e->getMessage());
+            return false;
+        }
     }
     
     /**

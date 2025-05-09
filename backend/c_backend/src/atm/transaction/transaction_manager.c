@@ -1,15 +1,21 @@
 #include <atm/transaction/transaction_manager.h>
 #include <common/database/database.h>
+#include <common/database/dao_interface.h>   // Include DAO interface
 #include <common/utils/logger.h>
 #include <common/utils/hash_utils.h>
 #include <common/paths.h>
 #include <common/database/customer_profile.h>
 #include <common/config/config_manager.h>
 #include <atm/validation/card_validator.h>
+#include <common/utils/cbs_logger.h>      // CBS Logger
+#include <common/utils/dao_audit_logger.h> // DAO Audit Logger
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+
+// External function to get the DAO instance
+extern DatabaseAccessObject* getDAO(void);
 
 // Define config constants if not defined elsewhere
 #ifndef CONFIG_MAINTENANCE_MODE
@@ -40,21 +46,46 @@ static void getCurrentTimestamp(char *buffer, size_t size) {
     strftime(buffer, size, "%Y-%m-%d %H:%M:%S", t);
 }
 
-// Write detailed transaction information to log
+// Helper function to check if ATM is in maintenance mode
+bool isMaintenanceModeActive(void) {
+    return get_config_bool(CONFIG_MAINTENANCE_MODE, false);
+}
+
+// Check if virtual ATM is enabled
+bool is_virtual_atm_enabled(void) {
+    return get_config_bool(CONFIG_VIRTUAL_ATM_ENABLED, false);
+}
+
+// Write detailed transaction information to log using CBS logger
 void writeTransactionDetails(const char* username, const char* transactionType, const char* details) {
+    // Generate a transaction ID
+    char transaction_id[37];
     time_t now = time(NULL);
     struct tm* tm_now = localtime(&now);
+    
+    // Format: TXN-YYYYMMDD-HHMMSS-RANDOM
+    snprintf(transaction_id, sizeof(transaction_id), 
+             "TXN-%04d%02d%02d-%02d%02d%02d-%06d",
+             tm_now->tm_year + 1900, tm_now->tm_mon + 1, tm_now->tm_mday,
+             tm_now->tm_hour, tm_now->tm_min, tm_now->tm_sec,
+             rand() % 1000000);
+    
+    // Log using the CBS logger (more detailed and compliant)
+    cbs_writeLog(LOG_CATEGORY_TRANSACTION, CBS_LOG_LEVEL_INFO,
+                "User: %s, Type: %s, Details: %s", 
+                username, transactionType, details);
+                
+    // Also write to traditional transaction log file for backward compatibility
+    const char* transactionPath = isTestingMode() ? 
+        TEST_TRANSACTIONS_LOG_FILE : PROD_TRANSACTIONS_LOG_FILE;
+    
+    // Create a log message with all details for backwards compatibility
+    char logMessage[512];
     char timestamp[30];
     strftime(timestamp, sizeof(timestamp), "%Y-%m-%d %H:%M:%S", tm_now);
     
-    // Create a log message with all details
-    char logMessage[512];
     snprintf(logMessage, sizeof(logMessage), "[%s] User: %s, Type: %s, Details: %s", 
              timestamp, username, transactionType, details);
-    
-    // Log to transaction file
-    const char* transactionPath = isTestingMode() ? 
-        TEST_TRANSACTIONS_LOG_FILE : PROD_TRANSACTIONS_LOG_FILE;
     
     FILE* file = fopen(transactionPath, "a");
     if (file != NULL) {
@@ -63,6 +94,52 @@ void writeTransactionDetails(const char* username, const char* transactionType, 
     } else {
         // If transaction log cannot be opened, fall back to error log
         writeErrorLog("Failed to write transaction details");
+        cbs_writeLog(LOG_CATEGORY_SYSTEM, CBS_LOG_LEVEL_ERROR, 
+                    "Failed to write to transaction log file: %s", transactionPath);
+    }
+}
+
+// Helper function to handle transaction logging with both traditional and CBS loggers
+void enhanced_transaction_log(
+    int cardNumber,
+    const char* username,
+    const char* transactionType, 
+    float amount, 
+    float old_balance, 
+    float new_balance, 
+    bool success) {
+    
+    // Use traditional logging mechanism
+    DatabaseAccessObject* dao = getDAO();
+    if (dao != NULL) {
+        dao->logTransaction(cardNumber, transactionType, amount, success);
+    }
+    
+    // Use new CBS compliant audit logging
+    record_transaction_audit(
+        username ? username : "UNKNOWN",
+        cardNumber,
+        transactionType,
+        amount,
+        old_balance,
+        new_balance,
+        success
+    );
+    
+    // Log security information for failed transactions
+    if (!success) {
+        char card_str[20];
+        snprintf(card_str, sizeof(card_str), "%d", cardNumber);
+        
+        cbs_writeSecurityLog(
+            username ? username : "UNKNOWN",
+            "TRANSACTION_FAILURE",
+            "MEDIUM",
+            "FAILED",
+            card_str,
+            "Failed transaction attempt",
+            NULL  // No IP address available in this context
+        );
     }
 }
 
@@ -78,17 +155,35 @@ TransactionResult checkAccountBalance(int cardNumber, const char* username) {
         result.oldBalance = balance;
         sprintf(result.message, "Current balance: $%.2f", balance);
         
-        // Log the transaction
+        // Log the transaction with both traditional and CBS loggers
         char detailsLog[100];
         sprintf(detailsLog, "Checked balance: $%.2f", balance);
         writeTransactionDetails(username, "Balance Check", detailsLog);
         
-        logTransaction(cardNumber, TRANSACTION_BALANCE_CHECK, 0.0f, 1);
+        // Use enhanced logging that covers both systems
+        enhanced_transaction_log(
+            cardNumber,
+            username,
+            TRANSACTION_BALANCE_CHECK,
+            0.0f,  // No amount for balance check
+            balance,
+            balance,
+            true
+        );
     } else {
         result.success = 0;
         strcpy(result.message, "Error: Unable to fetch balance");
         
-        logTransaction(cardNumber, TRANSACTION_BALANCE_CHECK, 0.0f, 0);
+        // Log the failed transaction with both systems
+        enhanced_transaction_log(
+            cardNumber,
+            username,
+            TRANSACTION_BALANCE_CHECK,
+            0.0f,
+            0.0f,
+            0.0f,
+            false
+        );
     }
     
     return result;
@@ -102,6 +197,17 @@ TransactionResult checkAccountBalanceByCardNumber(const char* cardNumber, const 
     if (!validate_card_format(cardNumber)) {
         result.success = 0;
         strcpy(result.message, "Error: Invalid card number format");
+        
+        // Log the validation failure
+        cbs_writeSecurityLog(
+            username ? username : "UNKNOWN",
+            "CARD_VALIDATION_FAILURE",
+            "MEDIUM",
+            "REJECTED",
+            "MASKED_CARD",
+            "Invalid card number format",
+            NULL
+        );
         return result;
     }
     
@@ -110,11 +216,23 @@ TransactionResult checkAccountBalanceByCardNumber(const char* cardNumber, const 
     if (card == NULL) {
         result.success = 0;
         strcpy(result.message, "Error: Card not found");
+        
+        // Log the security event for card not found
+        cbs_writeSecurityLog(
+            username ? username : "UNKNOWN",
+            "CARD_NOT_FOUND",
+            "MEDIUM",
+            "REJECTED",
+            "MASKED_CARD",
+            "Card not found in database",
+            NULL
+        );
         return result;
     }
     
     // Fetch balance from database using customer ID
     float balance = fetchBalanceByCustomerId(card->customer_id);
+    int numericCardNumber = card->card_id;  // Get the numeric card ID
     free(card);  // Free card data after use
     
     if (balance >= 0) {
@@ -128,12 +246,30 @@ TransactionResult checkAccountBalanceByCardNumber(const char* cardNumber, const 
         sprintf(detailsLog, "Checked balance: $%.2f", balance);
         writeTransactionDetails(username, "Virtual Balance Check", detailsLog);
         
-        logTransaction(0, TRANSACTION_BALANCE_CHECK, 0.0f, 1);  // Use 0 as placeholder for cardNumber
+        // Use enhanced logging
+        enhanced_transaction_log(
+            numericCardNumber,
+            username,
+            "Virtual Balance Check",
+            0.0f,
+            balance,
+            balance,
+            true
+        );
     } else {
         result.success = 0;
         strcpy(result.message, "Error: Unable to fetch balance");
         
-        logTransaction(0, TRANSACTION_BALANCE_CHECK, 0.0f, 0);
+        // Log failure with both systems
+        enhanced_transaction_log(
+            numericCardNumber,
+            username,
+            "Virtual Balance Check",
+            0.0f,
+            0.0f,
+            0.0f,
+            false
+        );
     }
     
     return result;
@@ -142,42 +278,139 @@ TransactionResult checkAccountBalanceByCardNumber(const char* cardNumber, const 
 // Perform deposit operation
 TransactionResult performDeposit(int cardNumber, float amount, const char* username) {
     TransactionResult result = {0};
+    DatabaseAccessObject* dao = getDAO();  // Get DAO instance
     
     if (amount <= 0) {
         result.success = 0;
         strcpy(result.message, "Error: Invalid deposit amount");
-        logTransaction(cardNumber, TRANSACTION_DEPOSIT, amount, 0);
+        
+        // Log validation failure
+        enhanced_transaction_log(
+            cardNumber,
+            username,
+            "Deposit",
+            amount,
+            0.0f,
+            0.0f,
+            false
+        );
         return result;
     }
     
-    // Fetch current balance
-    float oldBalance = fetchBalance(cardNumber);
+    // Check if card exists and is active
+    if (!dao->doesCardExist(cardNumber)) {
+        result.success = 0;
+        strcpy(result.message, "Error: Card not found");
+        
+        // Log security event for card not found
+        cbs_writeSecurityLog(
+            username ? username : "UNKNOWN",
+            "CARD_NOT_FOUND",
+            "MEDIUM",
+            "REJECTED",
+            "TRANSACTION_ATTEMPT",
+            "Deposit attempt with non-existent card",
+            NULL
+        );
+        
+        enhanced_transaction_log(
+            cardNumber,
+            username,
+            "Deposit",
+            amount,
+            0.0f,
+            0.0f,
+            false
+        );
+        return result;
+    }
+    
+    if (!dao->isCardActive(cardNumber)) {
+        result.success = 0;
+        strcpy(result.message, "Error: Card is inactive or blocked");
+        
+        // Log security event for inactive card
+        char card_str[20];
+        snprintf(card_str, sizeof(card_str), "%d", cardNumber);
+        
+        cbs_writeSecurityLog(
+            username ? username : "UNKNOWN",
+            "INACTIVE_CARD_USAGE",
+            "HIGH",
+            "REJECTED",
+            card_str,
+            "Transaction attempt with inactive/blocked card",
+            NULL
+        );
+        
+        enhanced_transaction_log(
+            cardNumber,
+            username,
+            "Deposit",
+            amount,
+            0.0f,
+            0.0f,
+            false
+        );
+        return result;
+    }
+    
+    // Fetch current balance using DAO
+    float oldBalance = dao->fetchBalance(cardNumber);
     if (oldBalance < 0) {
         result.success = 0;
         strcpy(result.message, "Error: Unable to fetch account balance");
-        logTransaction(cardNumber, TRANSACTION_DEPOSIT, amount, 0);
+        
+        enhanced_transaction_log(
+            cardNumber,
+            username,
+            "Deposit",
+            amount,
+            0.0f,
+            0.0f,
+            false
+        );
         return result;
     }
     
     // Perform deposit by updating balance
     float newBalance = oldBalance + amount;
-    if (updateBalance(cardNumber, newBalance)) {
+    if (dao->updateBalance(cardNumber, newBalance)) {
         result.success = 1;
         result.oldBalance = oldBalance;
         result.newBalance = newBalance;
         sprintf(result.message, "Deposit successful. New balance: $%.2f", newBalance);
         
-        // Log the transaction
+        // Log the transaction with both traditional and CBS loggers
         char detailsLog[100];
         sprintf(detailsLog, "Deposited $%.2f. Old balance: $%.2f, New balance: $%.2f", 
                amount, oldBalance, newBalance);
         writeTransactionDetails(username, "Deposit", detailsLog);
         
-        logTransaction(cardNumber, TRANSACTION_DEPOSIT, amount, 1);
+        // Use our enhanced logging function
+        enhanced_transaction_log(
+            cardNumber,
+            username,
+            "Deposit",
+            amount,
+            oldBalance,
+            newBalance,
+            true
+        );
     } else {
         result.success = 0;
         strcpy(result.message, "Error: Unable to update balance");
-        logTransaction(cardNumber, TRANSACTION_DEPOSIT, amount, 0);
+        
+        // Log failure
+        enhanced_transaction_log(
+            cardNumber,
+            username,
+            "Deposit",
+            amount,
+            oldBalance,
+            oldBalance, // No change in balance
+            false
+        );
     }
     
     return result;
@@ -191,6 +424,11 @@ TransactionResult performVirtualDeposit(const char* cardNumber, int cvv, const c
     if (!is_virtual_atm_enabled()) {
         result.success = 0;
         strcpy(result.message, "Error: Virtual ATM functionality is currently disabled");
+        
+        // Log configuration restriction
+        cbs_writeLog(LOG_CATEGORY_SECURITY, CBS_LOG_LEVEL_WARNING,
+                    "Virtual deposit attempt when feature disabled: User %s, Amount: %.2f",
+                    username ? username : "UNKNOWN", amount);
         return result;
     }
     
@@ -198,31 +436,62 @@ TransactionResult performVirtualDeposit(const char* cardNumber, int cvv, const c
     CardValidationStatus status = validate_virtual_transaction(cardNumber, cvv, expiryDate);
     if (status != CARD_VALID) {
         result.success = 0;
+        
+        // Prepare security log details
+        const char *failure_reason = "Unknown validation failure";
+        const char *severity = "MEDIUM";
+        
         switch (status) {
             case CARD_INVALID_FORMAT:
                 strcpy(result.message, "Error: Invalid card number format");
+                failure_reason = "Invalid card number format";
                 break;
             case CARD_NOT_FOUND:
                 strcpy(result.message, "Error: Card not found");
+                failure_reason = "Card not found";
                 break;
             case CARD_EXPIRED:
                 strcpy(result.message, "Error: Card is expired");
+                failure_reason = "Expired card";
+                severity = "HIGH";
                 break;
             case CARD_CVV_INVALID:
                 strcpy(result.message, "Error: Invalid CVV");
+                failure_reason = "Invalid CVV";
+                severity = "HIGH";
                 break;
             case CARD_BLOCKED:
                 strcpy(result.message, "Error: Card is blocked");
+                failure_reason = "Blocked card";
+                severity = "HIGH";
                 break;
             default:
                 strcpy(result.message, "Error: Card validation failed");
+                failure_reason = "General validation failure";
         }
+        
+        // Log security event for virtual transaction validation failure
+        cbs_writeSecurityLog(
+            username ? username : "UNKNOWN",
+            "VIRTUAL_TRANSACTION_VALIDATION_FAILURE",
+            severity,
+            "REJECTED",
+            "MASKED_CARD",
+            failure_reason,
+            NULL
+        );
+        
         return result;
     }
     
     if (amount <= 0) {
         result.success = 0;
         strcpy(result.message, "Error: Invalid deposit amount");
+        
+        // Log validation failure
+        cbs_writeLog(LOG_CATEGORY_TRANSACTION, CBS_LOG_LEVEL_WARNING,
+                    "Invalid deposit amount: %.2f, User: %s",
+                    amount, username ? username : "UNKNOWN");
         return result;
     }
     
@@ -231,6 +500,9 @@ TransactionResult performVirtualDeposit(const char* cardNumber, int cvv, const c
     if (card == NULL) {
         result.success = 0;
         strcpy(result.message, "Error: Unable to retrieve card data");
+        
+        cbs_writeLog(LOG_CATEGORY_SYSTEM, CBS_LOG_LEVEL_ERROR,
+                    "Failed to retrieve card data for virtual deposit");
         return result;
     }
     
@@ -240,6 +512,9 @@ TransactionResult performVirtualDeposit(const char* cardNumber, int cvv, const c
         free(card);
         result.success = 0;
         strcpy(result.message, "Error: Unable to fetch account balance");
+        
+        cbs_writeLog(LOG_CATEGORY_DATABASE, CBS_LOG_LEVEL_ERROR,
+                    "Failed to fetch account balance by customer ID");
         return result;
     }
     
@@ -251,78 +526,183 @@ TransactionResult performVirtualDeposit(const char* cardNumber, int cvv, const c
         result.newBalance = newBalance;
         sprintf(result.message, "Virtual deposit successful. New balance: $%.2f", newBalance);
         
-        // Log the transaction
+        // Log the transaction with both traditional and CBS loggers
         char detailsLog[100];
         sprintf(detailsLog, "Virtual deposited $%.2f. Old balance: $%.2f, New balance: $%.2f", 
                amount, oldBalance, newBalance);
         writeTransactionDetails(username, "Virtual Deposit", detailsLog);
         
-        logTransaction(card->card_id, TRANSACTION_DEPOSIT, amount, 1);
+        // Use enhanced logging with both systems
+        enhanced_transaction_log(
+            card->card_id,
+            username,
+            "Virtual Deposit",
+            amount,
+            oldBalance,
+            newBalance,
+            true
+        );
     } else {
         result.success = 0;
         strcpy(result.message, "Error: Unable to update balance");
-        logTransaction(card->card_id, TRANSACTION_DEPOSIT, amount, 0);
+        
+        // Log failure with both systems
+        enhanced_transaction_log(
+            card->card_id,
+            username,
+            "Virtual Deposit",
+            amount,
+            oldBalance,
+            oldBalance,  // No change in balance
+            false
+        );
     }
     
     free(card);
     return result;
 }
 
+// Perform PIN change
+TransactionResult performPINChange(int cardNumber, int oldPIN, int newPIN, const char* username) {
+    TransactionResult result = {0};
+    DatabaseAccessObject* dao = getDAO();  // Get DAO instance
+    
+    // Check if ATM is in maintenance mode
+    if (isMaintenanceModeActive()) {
+        result.success = 0;
+        strcpy(result.message, "Sorry, this ATM is currently in maintenance mode.");
+        dao->logTransaction(cardNumber, "PIN Change", 0.0f, false);
+        return result;
+    }
+    
+    // Check if card exists and is active
+    if (!dao->doesCardExist(cardNumber)) {
+        result.success = 0;
+        strcpy(result.message, "Error: Card not found");
+        return result;
+    }
+    
+    if (!dao->isCardActive(cardNumber)) {
+        result.success = 0;
+        strcpy(result.message, "Error: Card is inactive or blocked");
+        return result;
+    }
+    
+    // Validate old PIN
+    if (!dao->validateCard(cardNumber, oldPIN)) {
+        result.success = 0;
+        strcpy(result.message, "Error: Invalid PIN");
+        dao->logTransaction(cardNumber, "PIN Change", 0.0f, false);
+        return result;
+    }
+    
+    // Validate new PIN format (4 digits)
+    if (newPIN < 1000 || newPIN > 9999) {
+        result.success = 0;
+        strcpy(result.message, "Error: PIN must be a 4-digit number");
+        dao->logTransaction(cardNumber, "PIN Change", 0.0f, false);
+        return result;
+    }
+    
+    // Convert PIN to hash (in a real implementation, use a secure hashing algorithm)
+    char pinStr[20];
+    sprintf(pinStr, "%d", newPIN);
+    char* newPINHash = sha256_hash(pinStr);
+    if (!newPINHash) {
+        result.success = 0;
+        strcpy(result.message, "Error: System error while processing PIN change");
+        dao->logTransaction(cardNumber, "PIN Change", 0.0f, false);
+        return result;
+    }
+    
+    // Update PIN using DAO
+    if (dao->updateCardPIN(cardNumber, newPINHash)) {
+        result.success = 1;
+        strcpy(result.message, "PIN changed successfully");
+        
+        // Log the transaction
+        writeTransactionDetails(username, "PIN Change", "PIN changed successfully");
+        dao->logTransaction(cardNumber, "PIN Change", 0.0f, true);
+        
+        // Free the allocated hash
+        free(newPINHash);
+    } else {
+        result.success = 0;
+        strcpy(result.message, "Error: Unable to update PIN");
+        dao->logTransaction(cardNumber, "PIN Change", 0.0f, false);
+        
+        // Free the allocated hash
+        free(newPINHash);
+    }
+    
+    return result;
+}
+
 // Perform withdrawal operation
 TransactionResult performWithdrawal(int cardNumber, float amount, const char* username) {
     TransactionResult result = {0};
+    DatabaseAccessObject* dao = getDAO();  // Get DAO instance
     
     // Check if ATM is in maintenance mode
-    if (getConfigValueBool(CONFIG_MAINTENANCE_MODE)) {
+    if (isMaintenanceModeActive()) {
         result.success = 0;
         strcpy(result.message, "Sorry, this ATM is currently in maintenance mode.");
-        logTransaction(cardNumber, TRANSACTION_WITHDRAWAL, amount, 0);
+        dao->logTransaction(cardNumber, "Withdrawal", amount, false);
         return result;
     }
 
     // Get withdrawal limit from system configuration
-    int withdrawalLimit = getConfigValueInt(CONFIG_ATM_WITHDRAWAL_LIMIT);
-    if (withdrawalLimit <= 0) {
-        withdrawalLimit = 25000; // Default limit if not configured
-    }
-
+    float withdrawalLimit = get_config_float(CONFIG_ATM_WITHDRAWAL_LIMIT, 25000.0f);
+    
     // Get daily transaction limit from system configuration
-    int dailyLimit = getConfigValueInt(CONFIG_DAILY_TRANSACTION_LIMIT);
-    if (dailyLimit <= 0) {
-        dailyLimit = 50000; // Default limit if not configured
-    }
+    float dailyLimit = get_config_float(CONFIG_DAILY_TRANSACTION_LIMIT, 50000.0f);
     
     // Validate withdrawal amount
     if (amount <= 0) {
         result.success = 0;
         strcpy(result.message, "Error: Invalid withdrawal amount");
-        logTransaction(cardNumber, TRANSACTION_WITHDRAWAL, amount, 0);
+        dao->logTransaction(cardNumber, "Withdrawal", amount, false);
+        return result;
+    }
+    
+    // Check if card exists and is active
+    if (!dao->doesCardExist(cardNumber)) {
+        result.success = 0;
+        strcpy(result.message, "Error: Card not found");
+        dao->logTransaction(cardNumber, "Withdrawal", amount, false);
+        return result;
+    }
+    
+    if (!dao->isCardActive(cardNumber)) {
+        result.success = 0;
+        strcpy(result.message, "Error: Card is inactive or blocked");
+        dao->logTransaction(cardNumber, "Withdrawal", amount, false);
         return result;
     }
     
     // Check if amount exceeds the ATM withdrawal limit
     if (amount > withdrawalLimit) {
         result.success = 0;
-        sprintf(result.message, "Error: Amount exceeds withdrawal limit of $%d", withdrawalLimit);
-        logTransaction(cardNumber, TRANSACTION_WITHDRAWAL, amount, 0);
+        sprintf(result.message, "Error: Amount exceeds withdrawal limit of $%.2f", withdrawalLimit);
+        dao->logTransaction(cardNumber, "Withdrawal", amount, false);
         return result;
     }
     
     // Check if amount exceeds daily withdrawal limit
-    float todayWithdrawals = getDailyWithdrawals(cardNumber);
+    float todayWithdrawals = dao->getDailyWithdrawals(cardNumber);
     if (todayWithdrawals + amount > dailyLimit) {
         result.success = 0;
-        sprintf(result.message, "Error: Would exceed daily transaction limit of $%d", dailyLimit);
-        logTransaction(cardNumber, TRANSACTION_WITHDRAWAL, amount, 0);
+        sprintf(result.message, "Error: Would exceed daily transaction limit of $%.2f", dailyLimit);
+        dao->logTransaction(cardNumber, "Withdrawal", amount, false);
         return result;
     }
     
     // Fetch current balance
-    float oldBalance = fetchBalance(cardNumber);
+    float oldBalance = dao->fetchBalance(cardNumber);
     if (oldBalance < 0) {
         result.success = 0;
         strcpy(result.message, "Error: Unable to fetch account balance");
-        logTransaction(cardNumber, TRANSACTION_WITHDRAWAL, amount, 0);
+        dao->logTransaction(cardNumber, "Withdrawal", amount, false);
         return result;
     }
     
@@ -330,13 +710,13 @@ TransactionResult performWithdrawal(int cardNumber, float amount, const char* us
     if (oldBalance < amount) {
         result.success = 0;
         sprintf(result.message, "Error: Insufficient funds. Current balance: $%.2f", oldBalance);
-        logTransaction(cardNumber, TRANSACTION_WITHDRAWAL, amount, 0);
+        dao->logTransaction(cardNumber, "Withdrawal", amount, false);
         return result;
     }
     
     // Perform withdrawal
     float newBalance = oldBalance - amount;
-    if (updateBalance(cardNumber, newBalance)) {
+    if (dao->updateBalance(cardNumber, newBalance)) {
         result.success = 1;
         result.oldBalance = oldBalance;
         result.newBalance = newBalance;
@@ -348,14 +728,15 @@ TransactionResult performWithdrawal(int cardNumber, float amount, const char* us
                amount, oldBalance, newBalance);
         writeTransactionDetails(username, "Withdrawal", detailsLog);
         
-        // Track withdrawal for daily limit
-        logWithdrawal(cardNumber, amount);
+        // Track withdrawal for daily limit using DAO
+        dao->logWithdrawal(cardNumber, amount);
         
-        logTransaction(cardNumber, TRANSACTION_WITHDRAWAL, amount, 1);
+        // Log transaction using DAO
+        dao->logTransaction(cardNumber, "Withdrawal", amount, true);
     } else {
         result.success = 0;
         strcpy(result.message, "Error: Unable to complete withdrawal");
-        logTransaction(cardNumber, TRANSACTION_WITHDRAWAL, amount, 0);
+        dao->logTransaction(cardNumber, "Withdrawal", amount, false);
     }
     
     return result;
@@ -364,6 +745,7 @@ TransactionResult performWithdrawal(int cardNumber, float amount, const char* us
 // New function for virtual withdrawal operation
 TransactionResult performVirtualWithdrawal(const char* cardNumber, int cvv, const char* expiryDate, float amount, const char* username) {
     TransactionResult result = {0};
+    DatabaseAccessObject* dao = getDAO();  // Get DAO instance
     
     // Check if virtual ATM is enabled
     if (!is_virtual_atm_enabled()) {
@@ -372,99 +754,96 @@ TransactionResult performVirtualWithdrawal(const char* cardNumber, int cvv, cons
         return result;
     }
     
-    // Validate the virtual transaction
-    CardValidationStatus status = validate_virtual_transaction(cardNumber, cvv, expiryDate);
-    if (status != CARD_VALID) {
+    // Convert string card number to int for DAO operations
+    int cardNum = atoi(cardNumber);
+    
+    // Check if card exists
+    if (!dao->doesCardExist(cardNum)) {
         result.success = 0;
-        switch (status) {
-            case CARD_INVALID_FORMAT:
-                strcpy(result.message, "Error: Invalid card number format");
-                break;
-            case CARD_NOT_FOUND:
-                strcpy(result.message, "Error: Card not found");
-                break;
-            case CARD_EXPIRED:
-                strcpy(result.message, "Error: Card is expired");
-                break;
-            case CARD_CVV_INVALID:
-                strcpy(result.message, "Error: Invalid CVV");
-                break;
-            case CARD_BLOCKED:
-                strcpy(result.message, "Error: Card is blocked");
-                break;
-            default:
-                strcpy(result.message, "Error: Card validation failed");
-        }
+        strcpy(result.message, "Error: Card not found");
+        return result;
+    }
+    
+    // Check if card is active
+    if (!dao->isCardActive(cardNum)) {
+        result.success = 0;
+        strcpy(result.message, "Error: Card is inactive or blocked");
+        return result;
+    }
+    
+    // Validate CVV 
+    if (!dao->validateCardCVV(cardNum, cvv)) {
+        result.success = 0;
+        strcpy(result.message, "Error: Invalid CVV");
+        return result;
+    }
+    
+    // Check expiry date
+    if (!dao->validateCardExpiry(cardNum, expiryDate)) {
+        result.success = 0;
+        strcpy(result.message, "Error: Card is expired");
         return result;
     }
     
     // Check if ATM is in maintenance mode
-    if (getConfigValueBool(CONFIG_MAINTENANCE_MODE)) {
+    if (isMaintenanceModeActive()) {
         result.success = 0;
         strcpy(result.message, "Sorry, the banking system is currently in maintenance mode.");
-        return result;
-    }
-    
-    // Get card data
-    CardData* card = get_card_data(cardNumber);
-    if (card == NULL) {
-        result.success = 0;
-        strcpy(result.message, "Error: Unable to retrieve card data");
+        dao->logTransaction(cardNum, "Virtual Withdrawal", amount, false);
         return result;
     }
     
     // Get withdrawal limit from system configuration for virtual transactions
-    const char* virtualLimitStr = get_config_value(CONFIG_VIRTUAL_WITHDRAWAL_LIMIT);
-    int withdrawalLimit = virtualLimitStr ? atoi(virtualLimitStr) : 10000; // Default virtual limit
+    float withdrawalLimit = get_config_float(CONFIG_VIRTUAL_WITHDRAWAL_LIMIT, 10000.0f);
     
     // Get daily transaction limit from system configuration
-    const char* dailyLimitStr = get_config_value(CONFIG_DAILY_TRANSACTION_LIMIT);
-    int dailyLimit = dailyLimitStr ? atoi(dailyLimitStr) : 50000; // Default daily limit
+    float dailyLimit = get_config_float(CONFIG_DAILY_TRANSACTION_LIMIT, 50000.0f);
     
     // Validate withdrawal amount
     if (amount <= 0) {
-        free(card);
         result.success = 0;
         strcpy(result.message, "Error: Invalid withdrawal amount");
+        dao->logTransaction(cardNum, "Virtual Withdrawal", amount, false);
         return result;
     }
     
     // Check if amount exceeds the virtual withdrawal limit
     if (amount > withdrawalLimit) {
-        free(card);
         result.success = 0;
-        sprintf(result.message, "Error: Amount exceeds virtual withdrawal limit of $%d", withdrawalLimit);
+        sprintf(result.message, "Error: Amount exceeds virtual withdrawal limit of $%.2f", withdrawalLimit);
+        dao->logTransaction(cardNum, "Virtual Withdrawal", amount, false);
         return result;
     }
     
     // Check if amount exceeds daily withdrawal limit
-    if (is_virtual_transaction_limit_exceeded(cardNumber, amount)) {
-        free(card);
+    float dailyWithdrawals = dao->getDailyWithdrawals(cardNum);
+    if (dailyWithdrawals + amount > dailyLimit) {
         result.success = 0;
-        sprintf(result.message, "Error: Would exceed daily transaction limit of $%d", dailyLimit);
+        sprintf(result.message, "Error: Would exceed daily transaction limit of $%.2f", dailyLimit);
+        dao->logTransaction(cardNum, "Virtual Withdrawal", amount, false);
         return result;
     }
     
-    // Fetch current balance using customer ID
-    float oldBalance = fetchBalanceByCustomerId(card->customer_id);
+    // Fetch current balance using DAO
+    float oldBalance = dao->fetchBalance(cardNum);
     if (oldBalance < 0) {
-        free(card);
         result.success = 0;
         strcpy(result.message, "Error: Unable to fetch account balance");
+        dao->logTransaction(cardNum, "Virtual Withdrawal", amount, false);
         return result;
     }
     
     // Check if sufficient funds
     if (oldBalance < amount) {
-        free(card);
         result.success = 0;
         sprintf(result.message, "Error: Insufficient funds. Current balance: $%.2f", oldBalance);
+        dao->logTransaction(cardNum, "Virtual Withdrawal", amount, false);
         return result;
     }
     
     // Perform withdrawal by updating balance
     float newBalance = oldBalance - amount;
-    if (updateBalanceByCustomerId(card->customer_id, newBalance)) {
+    if (dao->updateBalance(cardNum, newBalance)) {
         result.success = 1;
         result.oldBalance = oldBalance;
         result.newBalance = newBalance;
@@ -476,43 +855,62 @@ TransactionResult performVirtualWithdrawal(const char* cardNumber, int cvv, cons
                 amount, oldBalance, newBalance);
         writeTransactionDetails(username, "Virtual Withdrawal", detailsLog);
         
-        // Track withdrawal for daily limit
-        logWithdrawal(card->card_id, amount);
+        // Track withdrawal for daily limit using DAO
+        dao->logWithdrawal(cardNum, amount);
+        
+        // Log transaction using DAO
+        dao->logTransaction(cardNum, "Virtual Withdrawal", amount, true);
     } else {
         result.success = 0;
         strcpy(result.message, "Error: Unable to complete withdrawal");
+        dao->logTransaction(cardNum, "Virtual Withdrawal", amount, false);
     }
     
-    free(card);
     return result;
 }
 
 // Perform bill payment operation
 TransactionResult performBillPayment(int cardNumber, float amount, const char* billerName, const char* accountId, const char* username) {
     TransactionResult result = {0};
+    DatabaseAccessObject* dao = getDAO();  // Get DAO instance
     
     // Validate bill payment amount
     if (amount <= 0) {
         result.success = 0;
         strcpy(result.message, "Error: Invalid payment amount");
-        logTransaction(cardNumber, TRANSACTION_BILL_PAYMENT, amount, 0);
+        dao->logTransaction(cardNumber, "Bill Payment", amount, false);
         return result;
     }
     
     // Check if ATM is in maintenance mode
-    if (getConfigValueBool(CONFIG_MAINTENANCE_MODE)) {
+    if (isMaintenanceModeActive()) {
         result.success = 0;
         strcpy(result.message, "Sorry, this ATM is currently in maintenance mode.");
-        logTransaction(cardNumber, TRANSACTION_BILL_PAYMENT, amount, 0);
+        dao->logTransaction(cardNumber, "Bill Payment", amount, false);
         return result;
     }
     
-    // Fetch current balance
-    float oldBalance = fetchBalance(cardNumber);
+    // Check if card exists and is active
+    if (!dao->doesCardExist(cardNumber)) {
+        result.success = 0;
+        strcpy(result.message, "Error: Card not found");
+        dao->logTransaction(cardNumber, "Bill Payment", amount, false);
+        return result;
+    }
+    
+    if (!dao->isCardActive(cardNumber)) {
+        result.success = 0;
+        strcpy(result.message, "Error: Card is inactive or blocked");
+        dao->logTransaction(cardNumber, "Bill Payment", amount, false);
+        return result;
+    }
+    
+    // Fetch current balance using DAO
+    float oldBalance = dao->fetchBalance(cardNumber);
     if (oldBalance < 0) {
         result.success = 0;
         strcpy(result.message, "Error: Unable to fetch account balance");
-        logTransaction(cardNumber, TRANSACTION_BILL_PAYMENT, amount, 0);
+        dao->logTransaction(cardNumber, "Bill Payment", amount, false);
         return result;
     }
     
@@ -520,13 +918,13 @@ TransactionResult performBillPayment(int cardNumber, float amount, const char* b
     if (oldBalance < amount) {
         result.success = 0;
         sprintf(result.message, "Error: Insufficient funds. Current balance: $%.2f", oldBalance);
-        logTransaction(cardNumber, TRANSACTION_BILL_PAYMENT, amount, 0);
+        dao->logTransaction(cardNumber, "Bill Payment", amount, false);
         return result;
     }
     
-    // Perform bill payment by updating balance
+    // Perform bill payment by updating balance using DAO
     float newBalance = oldBalance - amount;
-    if (updateBalance(cardNumber, newBalance)) {
+    if (dao->updateBalance(cardNumber, newBalance)) {
         result.success = 1;
         result.oldBalance = oldBalance;
         result.newBalance = newBalance;
@@ -538,14 +936,12 @@ TransactionResult performBillPayment(int cardNumber, float amount, const char* b
                 amount, billerName, accountId, oldBalance, newBalance);
         writeTransactionDetails(username, "Bill Payment", detailsLog);
         
-        // Track payment for daily limit
-        logBillPayment(cardNumber, amount, billerName, accountId);
-        
-        logTransaction(cardNumber, TRANSACTION_BILL_PAYMENT, amount, 1);
+        // Track payment using DAO
+        dao->logTransaction(cardNumber, "Bill Payment", amount, true);
     } else {
         result.success = 0;
         strcpy(result.message, "Error: Unable to complete bill payment");
-        logTransaction(cardNumber, TRANSACTION_BILL_PAYMENT, amount, 0);
+        dao->logTransaction(cardNumber, "Bill Payment", amount, false);
     }
     
     return result;
@@ -556,6 +952,7 @@ TransactionResult performVirtualBillPayment(const char* cardNumber, int cvv, con
                                            float amount, const char* billerName, const char* accountId, 
                                            const char* username) {
     TransactionResult result = {0};
+    DatabaseAccessObject* dao = getDAO();  // Get DAO instance
     
     // Check if virtual ATM is enabled
     if (!is_virtual_atm_enabled()) {
@@ -564,29 +961,34 @@ TransactionResult performVirtualBillPayment(const char* cardNumber, int cvv, con
         return result;
     }
     
-    // Validate the virtual transaction
-    CardValidationStatus status = validate_virtual_transaction(cardNumber, cvv, expiryDate);
-    if (status != CARD_VALID) {
+    // Convert string card number to int for DAO operations
+    int cardNum = atoi(cardNumber);
+    
+    // Check if card exists
+    if (!dao->doesCardExist(cardNum)) {
         result.success = 0;
-        switch (status) {
-            case CARD_INVALID_FORMAT:
-                strcpy(result.message, "Error: Invalid card number format");
-                break;
-            case CARD_NOT_FOUND:
-                strcpy(result.message, "Error: Card not found");
-                break;
-            case CARD_EXPIRED:
-                strcpy(result.message, "Error: Card is expired");
-                break;
-            case CARD_CVV_INVALID:
-                strcpy(result.message, "Error: Invalid CVV");
-                break;
-            case CARD_BLOCKED:
-                strcpy(result.message, "Error: Card is blocked");
-                break;
-            default:
-                strcpy(result.message, "Error: Card validation failed");
-        }
+        strcpy(result.message, "Error: Card not found");
+        return result;
+    }
+    
+    // Check if card is active
+    if (!dao->isCardActive(cardNum)) {
+        result.success = 0;
+        strcpy(result.message, "Error: Card is inactive or blocked");
+        return result;
+    }
+    
+    // Validate CVV 
+    if (!dao->validateCardCVV(cardNum, cvv)) {
+        result.success = 0;
+        strcpy(result.message, "Error: Invalid CVV");
+        return result;
+    }
+    
+    // Check expiry date
+    if (!dao->validateCardExpiry(cardNum, expiryDate)) {
+        result.success = 0;
+        strcpy(result.message, "Error: Card is expired");
         return result;
     }
     
@@ -594,44 +996,38 @@ TransactionResult performVirtualBillPayment(const char* cardNumber, int cvv, con
     if (amount <= 0) {
         result.success = 0;
         strcpy(result.message, "Error: Invalid payment amount");
+        dao->logTransaction(cardNum, "Virtual Bill Payment", amount, false);
         return result;
     }
     
-    // Check if banking system is in maintenance mode
-    if (getConfigValueBool(CONFIG_MAINTENANCE_MODE)) {
+    // Check if ATM is in maintenance mode
+    if (isMaintenanceModeActive()) {
         result.success = 0;
         strcpy(result.message, "Sorry, the banking system is currently in maintenance mode.");
+        dao->logTransaction(cardNum, "Virtual Bill Payment", amount, false);
         return result;
     }
     
-    // Get card data
-    CardData* card = get_card_data(cardNumber);
-    if (card == NULL) {
-        result.success = 0;
-        strcpy(result.message, "Error: Unable to retrieve card data");
-        return result;
-    }
-    
-    // Fetch current balance using customer ID
-    float oldBalance = fetchBalanceByCustomerId(card->customer_id);
+    // Fetch current balance using DAO
+    float oldBalance = dao->fetchBalance(cardNum);
     if (oldBalance < 0) {
-        free(card);
         result.success = 0;
         strcpy(result.message, "Error: Unable to fetch account balance");
+        dao->logTransaction(cardNum, "Virtual Bill Payment", amount, false);
         return result;
     }
     
     // Check if sufficient funds
     if (oldBalance < amount) {
-        free(card);
         result.success = 0;
         sprintf(result.message, "Error: Insufficient funds. Current balance: $%.2f", oldBalance);
+        dao->logTransaction(cardNum, "Virtual Bill Payment", amount, false);
         return result;
     }
     
     // Perform bill payment by updating balance
     float newBalance = oldBalance - amount;
-    if (updateBalanceByCustomerId(card->customer_id, newBalance)) {
+    if (dao->updateBalance(cardNum, newBalance)) {
         result.success = 1;
         result.oldBalance = oldBalance;
         result.newBalance = newBalance;
@@ -643,174 +1039,133 @@ TransactionResult performVirtualBillPayment(const char* cardNumber, int cvv, con
                 amount, billerName, accountId, oldBalance, newBalance);
         writeTransactionDetails(username, "Virtual Bill Payment", detailsLog);
         
-        // Track payment for daily limit
-        logBillPayment(card->card_id, amount, billerName, accountId);
+        // Log transaction using DAO
+        dao->logTransaction(cardNum, "Virtual Bill Payment", amount, true);
     } else {
         result.success = 0;
         strcpy(result.message, "Error: Unable to complete bill payment");
+        dao->logTransaction(cardNum, "Virtual Bill Payment", amount, false);
     }
     
-    free(card);
     return result;
 }
 
 // Function to log bill payment for tracking and reporting
 void logBillPayment(int cardNumber, float amount, const char* billerName, const char* accountId) {
+    DatabaseAccessObject* dao = getDAO();  // Get DAO instance
+    
     // Create timestamp
     char timestamp[30];
     getCurrentTimestamp(timestamp, sizeof(timestamp));
     
-    // Create log record
+    // Create log record in a more detailed format that includes biller information
+    char detailsLog[300];
+    sprintf(detailsLog, "Bill payment of $%.2f to %s (Account: %s)", amount, billerName, accountId);
+    
+    // Log using DAO
+    dao->logTransaction(cardNumber, "Bill Payment", amount, true);
+    
+    // Create a more detailed audit trail
     const char* paymentLogPath = isTestingMode() ? 
         TEST_DATA_DIR "/bill_payments.log" : 
         PROD_DATA_DIR "/../logs/bill_payments.log";
     
     FILE* file = fopen(paymentLogPath, "a");
     if (file != NULL) {
-        fprintf(file, "%s|%d|%.2f|%s|%s\n", timestamp, cardNumber, amount, billerName, accountId);
+        fprintf(file, "%s|%d|%.2f|%s|%s|%s\n", timestamp, cardNumber, amount, billerName, accountId, detailsLog);
         fclose(file);
     } else {
         // Log error to main error log
         writeErrorLog("Failed to open bill payment log file");
     }
     
-    // Update daily transaction limits
-    logWithdrawal(cardNumber, amount); // Use existing withdrawal tracking for limits
+    // Update daily transaction limits using DAO
+    dao->logWithdrawal(cardNumber, amount); // Track as a withdrawal for limit purposes
 }
 
 // Get mini statement (recent transactions)
 TransactionResult getMiniStatement(int cardNumber, const char* username) {
     TransactionResult result = {0};
+    DatabaseAccessObject* dao = getDAO();  // Get DAO instance
     
-    // Set up transaction log file path
-    char transactionsLogPath[200];
-    sprintf(transactionsLogPath, "%s/transactions.log", 
-            isTestingMode() ? TEST_DATA_DIR : PROD_DATA_DIR "/../logs");
-    
-    FILE* file = fopen(transactionsLogPath, "r");
-    if (file == NULL) {
+    // Check if card exists and is active
+    if (!dao->doesCardExist(cardNumber)) {
         result.success = 0;
-        strcpy(result.message, "No transaction history available.");
-        logTransaction(cardNumber, TRANSACTION_MINI_STATEMENT, 0.0f, 0);
+        strcpy(result.message, "Error: Card not found");
+        dao->logTransaction(cardNumber, "Mini Statement", 0.0f, false);
         return result;
     }
     
-    // Get account ID from card number
-    char accountID[10] = "";
-    FILE* cardFile = fopen(getCardFilePath(), "r");
-    if (cardFile != NULL) {
-        char line[256];
-        
-        // Skip header lines
-        fgets(line, sizeof(line), cardFile);
-        fgets(line, sizeof(line), cardFile);
-        
-        char cardID[10], accID[10], cardNumberStr[20], cardType[10], expiryDate[15], status[10], pinHash[65];
-        
-        while (fgets(line, sizeof(line), cardFile) != NULL) {
-            if (sscanf(line, "%s | %s | %s | %s | %s | %s | %s", 
-                       cardID, accID, cardNumberStr, cardType, expiryDate, status, pinHash) >= 7) {
-                int storedCardNumber = atoi(cardNumberStr);
-                if (storedCardNumber == cardNumber) {
-                    strcpy(accountID, accID);
-                    break;
-                }
-            }
-        }
-        
-        fclose(cardFile);
+    if (!dao->isCardActive(cardNumber)) {
+        result.success = 0;
+        strcpy(result.message, "Error: Card is inactive or blocked");
+        dao->logTransaction(cardNumber, "Mini Statement", 0.0f, false);
+        return result;
     }
     
-    // If account ID not found, use card number as a fallback
-    if (strlen(accountID) == 0) {
-        sprintf(accountID, "A%d", cardNumber);
-    }
-    
-    // Count how many transactions are for this account
+    // Get mini statement using DAO (last 10 transactions)
+    Transaction transactions[10];
     int transactionCount = 0;
-    char line[256];
-    while (fgets(line, sizeof(line), file) != NULL) {
-        // Check if this line is for the current account ID
-        if (strstr(line, accountID) != NULL) {
-            transactionCount++;
-        }
+    
+    // Call the DAO to get recent transactions
+    if (!dao->getMiniStatement(cardNumber, transactions, 10, &transactionCount)) {
+        result.success = 0;
+        strcpy(result.message, "Error: Unable to retrieve transaction history");
+        dao->logTransaction(cardNumber, "Mini Statement", 0.0f, false);
+        return result;
     }
     
+    // If no transactions found
     if (transactionCount == 0) {
-        fclose(file);
         result.success = 0;
         strcpy(result.message, "No transaction history available for this account.");
-        logTransaction(cardNumber, TRANSACTION_MINI_STATEMENT, 0.0f, 0);
+        dao->logTransaction(cardNumber, "Mini Statement", 0.0f, false);
         return result;
     }
     
-    // Reset to beginning of file
-    rewind(file);
-    
-    // Get current balance
-    float balance = fetchBalance(cardNumber);
+    // Get current balance using DAO
+    float balance = dao->fetchBalance(cardNumber);
     if (balance < 0) {
-        fclose(file);
         result.success = 0;
         strcpy(result.message, "Error: Unable to fetch current balance.");
-        logTransaction(cardNumber, TRANSACTION_MINI_STATEMENT, 0.0f, 0);
+        dao->logTransaction(cardNumber, "Mini Statement", 0.0f, false);
         return result;
     }
     
-    // Format mini statement with up to 5 most recent transactions
-    char miniStatement[1024] = "Recent Transactions:\n";
-    char transactions[5][256];
-    int count = 0;
-    
-    while (fgets(line, sizeof(line), file) != NULL) {
-        if (strstr(line, accountID) != NULL) {
-            // Store this transaction
-            strcpy(transactions[count % 5], line);
-            count++;
-        }
-    }
-    
-    // Format the mini statement with the most recent transactions
-    strcat(miniStatement, "\n");
+    // Format the mini statement
+    char miniStatement[1024] = "Recent Transactions:\n\n";
     strcat(miniStatement, "Date       | Type        | Amount    | Status\n");
     strcat(miniStatement, "-------------------------------------\n");
     
-    // Start from the most recent transaction (if more than 5, show only the last 5)
-    int start = (count <= 5) ? 0 : count - 5;
-    for (int i = start; i < count; i++) {
-        char transactionID[10], accountIDFromLog[10], transactionType[20], statusStr[10], remarks[50];
-        float amount;
-        char timestamp[30];
+    // Format the transactions into a mini statement
+    for (int i = 0; i < transactionCount; i++) {
+        // Format date to show only the date part
+        char dateStr[15];
+        strncpy(dateStr, transactions[i].timestamp, 10);
+        dateStr[10] = '\0';
         
-        // Extract transaction details (simplified parsing)
-        if (sscanf(transactions[i % 5], "%s | %s | %s | %f | %s | %s | %s",
-                  transactionID, accountIDFromLog, transactionType, &amount,
-                  timestamp, statusStr, remarks) >= 7) {
-                  
-            // Format date to show only the date part
-            char dateStr[15];
-            strncpy(dateStr, timestamp, 10);
-            dateStr[10] = '\0';
-            
-            char formattedTransaction[100];
-            sprintf(formattedTransaction, "%s | %-10s | $%-8.2f | %s\n",
-                   dateStr, transactionType, amount, statusStr);
-            strcat(miniStatement, formattedTransaction);
-        }
+        // Format the transaction
+        char formattedTransaction[100];
+        sprintf(formattedTransaction, "%s | %-10s | $%-8.2f | %s\n",
+               dateStr, transactions[i].type, transactions[i].amount, 
+               transactions[i].success ? "Success" : "Failed");
+        strcat(miniStatement, formattedTransaction);
     }
     
+    // Add balance information
+    char line[50];
     strcat(miniStatement, "-------------------------------------\n");
     sprintf(line, "Current Balance: $%.2f", balance);
     strcat(miniStatement, line);
     
-    fclose(file);
-    
+    // Set success result
     result.success = 1;
     result.newBalance = balance;
     result.oldBalance = balance;
     strcpy(result.message, miniStatement);
     
-    logTransaction(cardNumber, TRANSACTION_MINI_STATEMENT, 0.0f, 1);
+    // Log the mini statement request
+    dao->logTransaction(cardNumber, "Mini Statement", 0.0f, true);
     
     // Log that mini-statement was requested
     char detailsLog[100];
@@ -823,6 +1178,7 @@ TransactionResult getMiniStatement(int cardNumber, const char* username) {
 // New function to get mini statement with card number string
 TransactionResult getVirtualMiniStatement(const char* cardNumber, int cvv, const char* expiryDate, const char* username) {
     TransactionResult result = {0};
+    DatabaseAccessObject* dao = getDAO();  // Get DAO instance
     
     // Check if virtual ATM is enabled
     if (!is_virtual_atm_enabled()) {
@@ -831,42 +1187,39 @@ TransactionResult getVirtualMiniStatement(const char* cardNumber, int cvv, const
         return result;
     }
     
-    // Validate the virtual transaction
-    CardValidationStatus status = validate_virtual_transaction(cardNumber, cvv, expiryDate);
-    if (status != CARD_VALID) {
+    // Convert string card number to int for DAO operations
+    int cardNum = atoi(cardNumber); 
+    
+    // Check if card exists
+    if (!dao->doesCardExist(cardNum)) {
         result.success = 0;
-        switch (status) {
-            case CARD_INVALID_FORMAT:
-                strcpy(result.message, "Error: Invalid card number format");
-                break;
-            case CARD_NOT_FOUND:
-                strcpy(result.message, "Error: Card not found");
-                break;
-            case CARD_EXPIRED:
-                strcpy(result.message, "Error: Card is expired");
-                break;
-            case CARD_CVV_INVALID:
-                strcpy(result.message, "Error: Invalid CVV");
-                break;
-            case CARD_BLOCKED:
-                strcpy(result.message, "Error: Card is blocked");
-                break;
-            default:
-                strcpy(result.message, "Error: Card validation failed");
-        }
+        strcpy(result.message, "Error: Card not found");
         return result;
     }
     
-    // Get card data
-    CardData* card = get_card_data(cardNumber);
-    if (card == NULL) {
+    // Check if card is active
+    if (!dao->isCardActive(cardNum)) {
         result.success = 0;
-        strcpy(result.message, "Error: Unable to retrieve card data");
+        strcpy(result.message, "Error: Card is inactive or blocked");
         return result;
     }
     
-    // Use the existing implementation but with card ID from the card data
-    result = getMiniStatement(card->card_id, username);
+    // Validate CVV 
+    if (!dao->validateCardCVV(cardNum, cvv)) {
+        result.success = 0;
+        strcpy(result.message, "Error: Invalid CVV");
+        return result;
+    }
+    
+    // Check expiry
+    if (!dao->validateCardExpiry(cardNum, expiryDate)) {
+        result.success = 0;
+        strcpy(result.message, "Error: Card is expired");
+        return result;
+    }
+    
+    // Use the existing implementation now that we've validated the card
+    result = getMiniStatement(cardNum, username);
     
     // Update the message to indicate this was a virtual transaction
     if (result.success) {
@@ -877,59 +1230,84 @@ TransactionResult getVirtualMiniStatement(const char* cardNumber, int cvv, const
         // Prepend the virtual header to the message
         strcpy(result.message, virtualHeader);
         strcat(result.message, originalMessage);
+        
+        // Log this as a virtual transaction
+        dao->logTransaction(cardNum, "Virtual Mini Statement", 0.0f, true);
     }
     
-    free(card);
     return result;
 }
 
 // Perform money transfer between accounts with transaction atomicity
 TransactionResult performMoneyTransfer(int senderCardNumber, int receiverCardNumber, float amount, const char* username) {
     TransactionResult result = {0};
+    DatabaseAccessObject* dao = getDAO();  // Get DAO instance
+    
+    // Check if ATM is in maintenance mode
+    if (isMaintenanceModeActive()) {
+        result.success = 0;
+        strcpy(result.message, "Sorry, this ATM is currently in maintenance mode.");
+        dao->logTransaction(senderCardNumber, "Money Transfer", amount, false);
+        return result;
+    }
     
     // Validate transfer amount
     if (amount <= 0) {
         result.success = 0;
         strcpy(result.message, "Error: Invalid transfer amount");
-        logTransaction(senderCardNumber, TRANSACTION_MONEY_TRANSFER, amount, 0);
+        dao->logTransaction(senderCardNumber, "Money Transfer", amount, false);
         return result;
     }
     
-    // Check if receiver card exists
-    if (!doesCardExist(receiverCardNumber)) {
+    // Check if sender card exists and is active
+    if (!dao->doesCardExist(senderCardNumber)) {
+        result.success = 0;
+        strcpy(result.message, "Error: Your card is not found");
+        dao->logTransaction(senderCardNumber, "Money Transfer", amount, false);
+        return result;
+    }
+    
+    if (!dao->isCardActive(senderCardNumber)) {
+        result.success = 0;
+        strcpy(result.message, "Error: Your card is inactive or blocked");
+        dao->logTransaction(senderCardNumber, "Money Transfer", amount, false);
+        return result;
+    }
+    
+    // Check if receiver card exists and is active
+    if (!dao->doesCardExist(receiverCardNumber)) {
         result.success = 0;
         strcpy(result.message, "Error: Recipient card number is invalid");
-        logTransaction(senderCardNumber, TRANSACTION_MONEY_TRANSFER, amount, 0);
+        dao->logTransaction(senderCardNumber, "Money Transfer", amount, false);
         return result;
     }
     
-    // Check if receiver card is active
-    if (!isCardActive(receiverCardNumber)) {
+    if (!dao->isCardActive(receiverCardNumber)) {
         result.success = 0;
         strcpy(result.message, "Error: Recipient card is not active");
-        logTransaction(senderCardNumber, TRANSACTION_MONEY_TRANSFER, amount, 0);
+        dao->logTransaction(senderCardNumber, "Money Transfer", amount, false);
         return result;
     }
     
-    // Lock the transaction files to ensure atomicity
+    // Lock the transaction files to ensure atomicity (this will be handled by the DAO in an actual implementation)
     if (!lockTransactionFiles()) {
         result.success = 0;
         strcpy(result.message, "Error: System busy, please try again later");
-        logTransaction(senderCardNumber, TRANSACTION_MONEY_TRANSFER, amount, 0);
+        dao->logTransaction(senderCardNumber, "Money Transfer", amount, false);
         return result;
     }
     
-    // Start transaction - create backup of account files
+    // Start transaction - create backup of account files (this will be handled by the DAO in an actual implementation)
     if (!backupAccountFiles()) {
         unlockTransactionFiles();
         result.success = 0;
         strcpy(result.message, "Error: Could not initiate transaction safely");
-        logTransaction(senderCardNumber, TRANSACTION_MONEY_TRANSFER, amount, 0);
+        dao->logTransaction(senderCardNumber, "Money Transfer", amount, false);
         return result;
     }
     
     // Fetch sender balance
-    float senderBalance = fetchBalance(senderCardNumber);
+    float senderBalance = dao->fetchBalance(senderCardNumber);
     if (senderBalance < 0) {
         // Rollback by restoring from backup
         restoreAccountFiles();
@@ -937,7 +1315,7 @@ TransactionResult performMoneyTransfer(int senderCardNumber, int receiverCardNum
         
         result.success = 0;
         strcpy(result.message, "Error: Unable to fetch your account balance");
-        logTransaction(senderCardNumber, TRANSACTION_MONEY_TRANSFER, amount, 0);
+        dao->logTransaction(senderCardNumber, "Money Transfer", amount, false);
         return result;
     }
     
@@ -948,12 +1326,12 @@ TransactionResult performMoneyTransfer(int senderCardNumber, int receiverCardNum
         
         result.success = 0;
         sprintf(result.message, "Error: Insufficient funds. Current balance: $%.2f", senderBalance);
-        logTransaction(senderCardNumber, TRANSACTION_MONEY_TRANSFER, amount, 0);
+        dao->logTransaction(senderCardNumber, "Money Transfer", amount, false);
         return result;
     }
     
     // Fetch receiver balance
-    float receiverBalance = fetchBalance(receiverCardNumber);
+    float receiverBalance = dao->fetchBalance(receiverCardNumber);
     if (receiverBalance < 0) {
         // Rollback by restoring from backup
         restoreAccountFiles();
@@ -961,13 +1339,13 @@ TransactionResult performMoneyTransfer(int senderCardNumber, int receiverCardNum
         
         result.success = 0;
         strcpy(result.message, "Error: Unable to fetch recipient's account balance");
-        logTransaction(senderCardNumber, TRANSACTION_MONEY_TRANSFER, amount, 0);
+        dao->logTransaction(senderCardNumber, "Money Transfer", amount, false);
         return result;
     }
     
-    // Update balances of both sender and receiver
-    int senderUpdateSuccess = updateBalance(senderCardNumber, senderBalance - amount);
-    int receiverUpdateSuccess = updateBalance(receiverCardNumber, receiverBalance + amount);
+    // Update balances of both sender and receiver using DAO
+    bool senderUpdateSuccess = dao->updateBalance(senderCardNumber, senderBalance - amount);
+    bool receiverUpdateSuccess = dao->updateBalance(receiverCardNumber, receiverBalance + amount);
     
     if (!senderUpdateSuccess || !receiverUpdateSuccess) {
         // Rollback if either update fails
@@ -976,7 +1354,7 @@ TransactionResult performMoneyTransfer(int senderCardNumber, int receiverCardNum
         
         result.success = 0;
         strcpy(result.message, "Error: Failed to complete transfer");
-        logTransaction(senderCardNumber, TRANSACTION_MONEY_TRANSFER, amount, 0);
+        dao->logTransaction(senderCardNumber, "Money Transfer", amount, false);
         return result;
     }
     
@@ -988,23 +1366,22 @@ TransactionResult performMoneyTransfer(int senderCardNumber, int receiverCardNum
     result.oldBalance = senderBalance;
     result.newBalance = senderBalance - amount;
     sprintf(result.message, "Transfer successful. Your new balance: $%.2f", result.newBalance);
-    
-    // Log the transaction for both accounts
+      // Log the transaction for both accounts
     char detailsLog[100];
     sprintf(detailsLog, "Transferred $%.2f to card %d", amount, receiverCardNumber);
     writeTransactionDetails(username, "Money Transfer", detailsLog);
     
-    logTransaction(senderCardNumber, TRANSACTION_MONEY_TRANSFER, amount, 1);
+    dao->logTransaction(senderCardNumber, "Money Transfer", amount, true);
     
     // Also log for recipient
     char recipientName[50] = "Unknown"; // Default if we can't find name
-    getCardHolderName(receiverCardNumber, recipientName, sizeof(recipientName));
+    dao->getCardHolderName(receiverCardNumber, recipientName, sizeof(recipientName));
     
     char recipientLog[100];
     sprintf(recipientLog, "Received $%.2f from card %d (%s)", amount, senderCardNumber, username);
     writeTransactionDetails(recipientName, "Money Received", recipientLog);
     
-    logTransaction(receiverCardNumber, TRANSACTION_MONEY_TRANSFER, amount, 1);
+    dao->logTransaction(receiverCardNumber, "Money Received", amount, true);
     
     return result;
 }

@@ -8,8 +8,8 @@
 #include <string.h>
 #include <stdbool.h>
 #include <unistd.h>
-#include "../../backend/c_backend/include/common/logger.h"
-#include "../../backend/c_backend/include/common/database.h"
+#include "../../include/common/utils/logger.h"
+#include "../../include/common/database/database.h"
 #include "menu_utils.h"
 #include "customer_menu.h"
 

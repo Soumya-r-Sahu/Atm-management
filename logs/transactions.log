@@ -18,3 +18,15 @@
 | T50015         | A10002     | Withdrawal       | ₹1500.00   | 2025-05-01 16:30:45   | Success            | ATM Withdrawal         |
 +----------------+------------+------------------+------------+------------------------+--------------------+------------------------+
 
+[2025-05-10 04:08:04] [INFO] Banking system initialized with 2 accounts
+[2025-05-10 04:11:58] [TRANSACTION] ID: TX174683051828973, User: USER001, Card: 1***********3456, Account: ACC51800001, Type: DEPOSIT, Amount: 250.00, Before: 1000.00, After: 1250.00, Status: SUCCESS, Details: Deposit transaction
+[2025-05-10 04:11:58] [TRANSACTION] ID: TX174683051830284, User: USER001, Card: 1***********3456, Account: ACC51800001, Type: WITHDRAWAL, Amount: 100.00, Before: 1250.00, After: 1150.00, Status: SUCCESS, Details: Withdrawal transaction
+[2025-05-10 04:11:58] [TRANSACTION] ID: TX174683051821181, User: USER001, Card: 1***********3456, Account: ACC51800001, Type: TRANSFER_OUT, Amount: 200.00, Before: 1150.00, After: 950.00, Status: SUCCESS, Details: Transfer transaction
+[2025-05-10 04:11:58] [TRANSACTION] ID: TX174683051821487, User: USER001, Card: 4***********1111, Account: TEST_ACCOUNT, Type: TEST_TRANSACTION, Amount: 100.00, Before: 500.00, After: 400.00, Status: SUCCESS, Details: Testing PII masking
+[2025-05-10 04:11:58] [TRANSACTION] ID: TX174683051816116, User: USER001, Card: 5***********4444, Account: TEST_ACCOUNT, Type: TEST_TRANSACTION, Amount: 100.00, Before: 500.00, After: 400.00, Status: SUCCESS, Details: Testing PII masking
+[2025-05-10 04:12:43] [TRANSACTION] ID: TX174683056329120, User: USER001, Card: 1***********3456, Account: ACC56300001, Type: DEPOSIT, Amount: 250.00, Before: 1000.00, After: 1250.00, Status: SUCCESS, Details: Deposit transaction
+[2025-05-10 04:12:43] [TRANSACTION] ID: TX174683056322442, User: USER001, Card: 1***********3456, Account: ACC56300001, Type: WITHDRAWAL, Amount: 100.00, Before: 1250.00, After: 1150.00, Status: SUCCESS, Details: Withdrawal transaction
+[2025-05-10 04:12:43] [TRANSACTION] ID: TX174683056305869, User: USER001, Card: 1***********3456, Account: ACC56300001, Type: TRANSFER_OUT, Amount: 200.00, Before: 1150.00, After: 950.00, Status: SUCCESS, Details: Transfer transaction
+[2025-05-10 04:12:43] [TRANSACTION] ID: TX174683056322993, User: USER001, Card: 4***********1111, Account: TEST_ACCOUNT, Type: TEST_TRANSACTION, Amount: 100.00, Before: 500.00, After: 400.00, Status: SUCCESS, Details: Testing PII masking
+[2025-05-10 04:12:43] [TRANSACTION] ID: TX174683056321520, User: USER001, Card: 5***********4444, Account: TEST_ACCOUNT, Type: TEST_TRANSACTION, Amount: 100.00, Before: 500.00, After: 400.00, Status: SUCCESS, Details: Testing PII masking
+[2025-05-10 04:21:21] [INFO] Banking system initialized with 2 accounts

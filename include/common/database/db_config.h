@@ -1,15 +1,131 @@
 /**
  * @file db_config.h
  * @brief Database configuration and connection pool for the ATM Management System
- * @version 1.0
- * @date May 3, 2025
+ * @version 2.0
+ * @date May 9, 2025
  */
 
 #ifndef DB_CONFIG_H
 #define DB_CONFIG_H
 
 #include <stdbool.h>
-#include <mysql/mysql.h>
+#include <time.h>
+
+#ifdef NO_MYSQL
+    #include "mysql_stub.h"
+    #define USING_MYSQL_STUB 1
+    #pragma message("Building with MySQL stub implementation")
+#else
+    // Try different paths for MySQL headers based on OS
+    #if defined(_WIN32) || defined(_WIN64)
+        // Windows paths
+        #if __has_include(<mysql.h>)
+            #include <mysql.h>
+            #undef MYSQL_HEADER_NOT_FOUND
+        #elif __has_include(<mysql/mysql.h>)
+            #include <mysql/mysql.h>
+            #undef MYSQL_HEADER_NOT_FOUND
+        #elif __has_include("C:/Program Files/MySQL/MySQL Server 8.0/include/mysql.h")
+            #include "C:/Program Files/MySQL/MySQL Server 8.0/include/mysql.h"
+            #undef MYSQL_HEADER_NOT_FOUND
+        #endif
+    #else
+        // Linux/Mac paths
+        #if __has_include(<mysql/mysql.h>)
+            #include <mysql/mysql.h>
+            #undef MYSQL_HEADER_NOT_FOUND
+        #elif __has_include(<mysql.h>)
+            #include <mysql.h>
+            #undef MYSQL_HEADER_NOT_FOUND
+        #elif __has_include("/usr/include/mysql/mysql.h")
+    #include "/usr/include/mysql/mysql.h"
+    #undef MYSQL_HEADER_NOT_FOUND
+  #elif __has_include("/usr/local/include/mysql/mysql.h")
+    #include "/usr/local/include/mysql/mysql.h"
+    #undef MYSQL_HEADER_NOT_FOUND
+  #endif
+#endif
+
+// Create comprehensive MySQL stub implementations if headers weren't found
+#ifdef MYSQL_HEADER_NOT_FOUND
+  #warning "MySQL headers not found. Using stub implementations for compilation only."
+  
+  // Basic MySQL typedefs
+  typedef void MYSQL;
+  typedef void MYSQL_RES;
+  typedef char** MYSQL_ROW;
+  typedef unsigned long long MYSQL_FIELD;
+  typedef unsigned long MYSQL_FIELD_OFFSET;
+  typedef unsigned int my_bool;
+  typedef unsigned long long my_ulonglong;
+  
+  // Connection handling
+  #define mysql_init(x) ((MYSQL*)NULL)
+  #define mysql_real_connect(a,b,c,d,e,f,g,h) ((MYSQL*)NULL)
+  #define mysql_close(x)
+  #define mysql_ping(x) (-1)
+  #define mysql_select_db(a,b) (-1)
+  #define mysql_change_user(a,b,c,d) (-1)
+  
+  // Error handling
+  #define mysql_error(x) "MySQL headers not found - stub implementation"
+  #define mysql_errno(x) (-1)
+  #define mysql_sqlstate(x) "HY000"
+  
+  // Query execution
+  #define mysql_query(a,b) (-1)
+  #define mysql_real_query(a,b,c) (-1)
+  
+  // Result set handling
+  #define mysql_store_result(x) ((MYSQL_RES*)NULL)
+  #define mysql_use_result(x) ((MYSQL_RES*)NULL)
+  #define mysql_free_result(x)
+  #define mysql_fetch_row(x) ((MYSQL_ROW)NULL)
+  #define mysql_fetch_lengths(x) ((unsigned long*)NULL)
+  #define mysql_fetch_field(x) ((MYSQL_FIELD*)NULL)
+  #define mysql_data_seek(a,b)
+  #define mysql_row_seek(a,b) ((MYSQL_ROW_OFFSET)NULL)
+  #define mysql_field_seek(a,b) ((MYSQL_FIELD_OFFSET)NULL)
+  
+  // Information functions
+  #define mysql_num_rows(x) ((my_ulonglong)0)
+  #define mysql_num_fields(x) ((unsigned int)0)
+  #define mysql_affected_rows(x) ((my_ulonglong)0)
+  #define mysql_insert_id(x) ((my_ulonglong)0)
+  #define mysql_field_count(x) ((unsigned int)0)
+  
+  // String escaping
+  #define mysql_real_escape_string(a,b,c,d) ((unsigned long)0)
+  #define mysql_hex_string(a,b,c) ((unsigned long)0)
+  
+  // Transaction handling
+  #define mysql_autocommit(a,b) (-1)
+  #define mysql_commit(x) (-1)
+  #define mysql_rollback(x) (-1)
+  
+  // Prepared statements (basic stubs)
+  typedef void MYSQL_STMT;
+  typedef void MYSQL_BIND;
+  #define mysql_stmt_init(x) ((MYSQL_STMT*)NULL)
+  #define mysql_stmt_prepare(a,b,c) (-1)
+  #define mysql_stmt_execute(x) (-1)
+  #define mysql_stmt_close(x) (0)
+  #define mysql_stmt_bind_param(a,b) (-1)
+  #define mysql_stmt_bind_result(a,b) (-1)
+  #define mysql_stmt_fetch(x) (-1)
+  #define mysql_stmt_free_result(x) (0)
+  #define mysql_stmt_error(x) "MySQL headers not found - stub implementation"
+  #define mysql_stmt_errno(x) (-1)
+  
+  // Character set functions
+  #define mysql_character_set_name(x) "utf8"
+  #define mysql_set_character_set(a,b) (-1)
+  
+  // Server information
+  #define mysql_get_server_info(x) "MySQL Stub 0.0.0"
+  #define mysql_get_client_info() "MySQL Stub Client 0.0.0"
+  #define mysql_get_client_version() 0
+#endif
 
 // Database connection settings
 #define DB_HOST "localhost"
@@ -75,13 +191,14 @@ bool db_init(void);
 void db_cleanup(void);
 
 /**
- * Get a connection from the pool
+ * Get a connection from the pool with optimized search algorithm
+ * This improved version has O(1) best case and O(n) worst case
  * @return Connection handle or NULL if none available
  */
 MYSQL* db_get_connection(void);
 
 /**
- * Release a connection back to the pool
+ * Release a connection back to the pool with O(1) complexity
  * @param conn Connection handle to release
  */
 void db_release_connection(MYSQL* conn);

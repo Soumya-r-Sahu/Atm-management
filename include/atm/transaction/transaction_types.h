@@ -20,8 +20,10 @@ typedef struct {
     TransactionType type;           // Transaction type
     char timestamp[20];             // Timestamp
     float amount;                   // Transaction amount
+    float balance;                  // Account balance after transaction
     char transaction_type[20];      // String representation of type
-    char status[10];                // Transaction status (Success/Failed)
+    char transaction_id[37];        // Transaction UUID
+    int status;                     // 1 for Success, 0 for Failed
 } Transaction;
 
 // Query result structure for returning multiple transactions

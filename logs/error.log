@@ -18,3 +18,7 @@
 [2025-05-02 16:48:09] [ERROR] Failed login attempt for admin user: 
 [2025-05-02 16:48:09] [ERROR] Failed login attempt for admin user: 
 [2025-05-02 16:48:49] [ERROR] Failed login attempt for admin user: admin@123
+[2025-05-10 04:11:58] [ERROR] [WARNING] Withdrawal failed: Insufficient funds in account ACC51800001
+[2025-05-10 04:11:58] [ERROR] [ERROR] Transfer failed: Source account INVALID_ACCOUNT not found
+[2025-05-10 04:12:43] [ERROR] [WARNING] Withdrawal failed: Insufficient funds in account ACC56300001
+[2025-05-10 04:12:43] [ERROR] [ERROR] Transfer failed: Source account INVALID_ACCOUNT not found

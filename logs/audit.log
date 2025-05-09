@@ -35,3 +35,23 @@ L50017   | System   | ACCESS     | System         | User authenticated successfu
 L50018   | System   | ACCESS     | System         | User authenticated successfully          | 2025-05-02 23:49:19
 L50019   | System   | ACCESS     | System         | User authenticated successfully          | 2025-05-02 23:49:35
 L50020   | System   | ACCESS     | System         | User authenticated successfully          | 2025-05-03 01:57:15
+[2025-05-10 04:11:58] [AUDIT] [INFO] DAO Audit Logger initialized with retention: 7 days
+[2025-05-10 04:11:58] [AUDIT] User: CUST001, Operation: CREATE_ACCOUNT, ResourceType: ACCOUNT, ResourceID: ACC51800001, BeforeState: {}, AfterState: {"account_number":"ACC51800001","balance":1000.00,"status":"ACTIVE"}, Details: New account created
+[2025-05-10 04:11:58] [AUDIT] User: CUST002, Operation: CREATE_ACCOUNT, ResourceType: ACCOUNT, ResourceID: ACC51800002, BeforeState: {}, AfterState: {"account_number":"ACC51800002","balance":500.00,"status":"ACTIVE"}, Details: New account created
+[2025-05-10 04:11:58] [AUDIT] User: USER001, Operation: DEPOSIT, ResourceType: ACCOUNT, ResourceID: ACC51800001, BeforeState: {"balance":1000.00}, AfterState: {"balance":1250.00}, Details: Deposit transaction
+[2025-05-10 04:11:58] [AUDIT] User: USER001, Operation: WITHDRAWAL, ResourceType: ACCOUNT, ResourceID: ACC51800001, BeforeState: {"balance":1250.00}, AfterState: {"balance":1150.00}, Details: Withdrawal transaction
+[2025-05-10 04:11:58] [AUDIT] User: USER001, Operation: TRANSFER_OUT, ResourceType: ACCOUNT, ResourceID: ACC51800001, BeforeState: {"balance":1150.00}, AfterState: {"balance":950.00}, Details: Transfer transaction
+[2025-05-10 04:11:58] [AUDIT] User: USER001, Operation: TRANSFER_IN, ResourceType: ACCOUNT, ResourceID: ACC51800002, BeforeState: {"balance":500.00}, AfterState: {"balance":700.00}, Details: Transfer transaction
+[2025-05-10 04:11:58] [AUDIT] User: USER001, Operation: BLOCK_CARD, ResourceType: CARD, ResourceID: 0000********4736, BeforeState: {"status": "ACTIVE"}, AfterState: {"status": "BLOCKED"}, Details: BLOCK_CARD
+[2025-05-10 04:11:58] [AUDIT] User: USER001, Operation: CARD_VALIDATION, ResourceType: CARD, ResourceID: 0000********0254, BeforeState: {"status": "UNKNOWN"}, AfterState: {"status": "ACTIVE"}, Details: CARD_VALIDATION
+[2025-05-10 04:11:58] [AUDIT] [INFO] DAO Audit Logger shut down
+[2025-05-10 04:12:43] [AUDIT] [INFO] DAO Audit Logger initialized with retention: 7 days
+[2025-05-10 04:12:43] [AUDIT] User: CUST001, Operation: CREATE_ACCOUNT, ResourceType: ACCOUNT, ResourceID: ACC56300001, BeforeState: {}, AfterState: {"account_number":"ACC56300001","balance":1000.00,"status":"ACTIVE"}, Details: New account created
+[2025-05-10 04:12:43] [AUDIT] User: CUST002, Operation: CREATE_ACCOUNT, ResourceType: ACCOUNT, ResourceID: ACC56300002, BeforeState: {}, AfterState: {"account_number":"ACC56300002","balance":500.00,"status":"ACTIVE"}, Details: New account created
+[2025-05-10 04:12:43] [AUDIT] User: USER001, Operation: DEPOSIT, ResourceType: ACCOUNT, ResourceID: ACC56300001, BeforeState: {"balance":1000.00}, AfterState: {"balance":1250.00}, Details: Deposit transaction
+[2025-05-10 04:12:43] [AUDIT] User: USER001, Operation: WITHDRAWAL, ResourceType: ACCOUNT, ResourceID: ACC56300001, BeforeState: {"balance":1250.00}, AfterState: {"balance":1150.00}, Details: Withdrawal transaction
+[2025-05-10 04:12:43] [AUDIT] User: USER001, Operation: TRANSFER_OUT, ResourceType: ACCOUNT, ResourceID: ACC56300001, BeforeState: {"balance":1150.00}, AfterState: {"balance":950.00}, Details: Transfer transaction
+[2025-05-10 04:12:43] [AUDIT] User: USER001, Operation: TRANSFER_IN, ResourceType: ACCOUNT, ResourceID: ACC56300002, BeforeState: {"balance":500.00}, AfterState: {"balance":700.00}, Details: Transfer transaction
+[2025-05-10 04:12:43] [AUDIT] User: USER001, Operation: BLOCK_CARD, ResourceType: CARD, ResourceID: 0000********4736, BeforeState: {"status": "ACTIVE"}, AfterState: {"status": "BLOCKED"}, Details: BLOCK_CARD
+[2025-05-10 04:12:43] [AUDIT] User: USER001, Operation: CARD_VALIDATION, ResourceType: CARD, ResourceID: 0000********0254, BeforeState: {"status": "UNKNOWN"}, AfterState: {"status": "ACTIVE"}, Details: CARD_VALIDATION
+[2025-05-10 04:12:43] [AUDIT] [INFO] DAO Audit Logger shut down

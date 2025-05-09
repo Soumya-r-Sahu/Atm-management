@@ -2,17 +2,12 @@
 #include "common/utils/logger.h"
 #include "common/utils/path_manager.h"
 #include "common/paths.h"
+#include "../../../include/common/database/db_unified_config.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
 #include <mysql/mysql.h>
-
-// MySQL connection details
-#define DB_HOST "localhost"
-#define DB_USER "root"
-#define DB_PASS "password"
-#define DB_NAME "atm_management"
 
 // Initialize MySQL connection
 static MYSQL* initMySQLConnection() {

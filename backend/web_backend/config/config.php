@@ -3,12 +3,8 @@
  * Configuration file for the ATM Management System web backend
  */
 
-// Database configuration
-define('DB_HOST', 'localhost');
-define('DB_USER', 'atm_user');
-define('DB_PASS', 'secure_password_here');
-define('DB_NAME', 'atm_management');
-define('DB_PORT', 3306);
+// Include the unified database configuration
+require_once __DIR__ . '/db_unified_config.php';
 
 // Application settings
 define('APP_NAME', 'ATM Management System');

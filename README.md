@@ -6,6 +6,25 @@ This project is a comprehensive ATM Management System with a clear separation be
 - **Web Interface** 🌐 (HTML, CSS, PHP)
 - **Mobile Application** 📱 (Flutter)
 
+## Build Information 🛠️
+This project has been reorganized to ensure proper code separation between frontend and backend components.
+
+For detailed build instructions, see:
+- [Build Guide](./BUILD_GUIDE.md) - Step-by-step build instructions
+- [Project Organization](./PROJECT_ORGANIZATION.md) - Information about code organization
+
+### Quick Start
+```bash
+# Standard build with MySQL
+mingw32-make all
+
+# MySQL-less build
+mingw32-make all CFLAGS+="-DNO_MYSQL"
+
+# Verify code organization
+mingw32-make verify_organization
+```
+
 ## Project Structure 🗂️
 ```
 Atm-management/
@@ -17,6 +36,170 @@ Atm-management/
 ├── docs/             # Documentation
 └── Makefile          # Build configuration
 ```
+
+## DAO Pattern Implementation 🧩
+The project now uses a Database Access Object (DAO) pattern to abstract database operations. This provides:
+
+- **Storage Agnosticism**: Same code works with both MySQL and file-based storage
+- **Improved Testability**: Easy to mock database interactions for testing
+- **Enhanced Maintainability**: Database operations centralized in one layer
+- **Better Performance**: Optimized with connection pooling and O(1) operations
+
+### DAO Structure
+```
+include/common/database/
+├── dao_interface.h           # The DAO interface definition
+├── db_unified_config.h       # Unified database configuration
+
+backend/database/
+├── dao_factory.c             # Factory to create appropriate DAO
+├── file_based_dao.c          # File-based implementation
+├── mysql_dao.c               # MySQL implementation
+```
+
+### Architecture Diagram
+```
++------------------+     +-------------------+
+| Business Logic   |     | Transaction       |
+| (ATM Operations) +---->+ Manager           |
++------------------+     +-------------------+
+                              |
+                              | Uses
+                              v
++---------------------------+-----------------+
+|         DAO Interface     | getDAO()        |
++---------------------------+-----------------+
+                |                |
+        +-------+-------+        |
+        |               |        |
++-------v-------+ +-----v-------+|
+| File-Based    | | MySQL       ||
+| DAO           | | DAO         ||
++---------------+ +-------------+|
+```
+
+### Performance Optimizations
+
+1. **O(1) Access Time**: File-based DAO uses indexed access instead of linear search
+2. **Connection Pooling**: MySQL DAO implements connection pooling to reduce overhead
+3. **Atomic Updates**: File operations use temporary files for atomic updates
+4. **Caching**: Frequently accessed data is cached to reduce I/O operations
+5. **Optimized Queries**: MySQL operations use prepared statements and optimized queries
+
+For complete details, see the [DAO Implementation Report](./docs/dao_implementation_report.md).
+├── db_unified_config.h       # Unified database configuration
+
+backend/database/
+├── dao_factory.c             # Factory to create appropriate DAO implementation
+├── file_based_dao.c          # File-based storage implementation
+├── mysql_dao.c               # MySQL storage implementation
+
+backend/c_backend/src/atm/transaction/
+├── transaction_manager_dao.c # Transaction manager using DAO pattern
+```
+
+### DAO Interface
+The DAO interface provides a consistent API for database operations:
+
+```c
+typedef struct {
+    // Card operations
+    bool (*doesCardExist)(int cardNumber);
+    bool (*isCardActive)(int cardNumber);
+    bool (*validateCard)(int cardNumber, int pin);
+    
+    // Account operations
+    float (*fetchBalance)(int cardNumber);
+    bool (*updateBalance)(int cardNumber, float newBalance);
+    
+    // Transaction operations
+    bool (*logTransaction)(int cardNumber, const char* transactionType, float amount, bool success);
+    bool (*getMiniStatement)(int cardNumber, Transaction* transactions, int maxTransactions, int* count);
+    
+    // ... and more operations
+} DatabaseAccessObject;
+```
+
+### Using the DAO Pattern
+
+Transaction managers and other modules can now interact with the database through the DAO interface:
+
+```c
+DatabaseAccessObject* dao = getDAO();  // Get appropriate DAO implementation
+float balance = dao->fetchBalance(cardNumber);  // Same API, different storage backends
+```
+
+### Testing the DAO Implementation
+
+A comprehensive test suite is available to verify DAO functionality:
+
+```bash
+# Build the DAO test
+mingw32-make dao_test
+
+# Run the DAO test
+bin/test_dao_implementation.exe
+```
+
+### DAO Pattern Architecture Diagram
+
+```
++-------------------+       +-----------------+      +------------------+
+| Transaction       |       | Admin           |      | Account          |
+| Manager           |       | Operations      |      | Management       |
++-------------------+       +-----------------+      +------------------+
+          |                         |                        |
+          v                         v                        v
++------------------------------------------------------------------+
+|                                                                  |
+|               Database Access Object (DAO) Interface Layer       |
+|                                                                  |
++------------------------------------------------------------------+
+          |                         |                        |
+          v                         v                        v
++-------------------+       +-----------------+      +------------------+
+| MySQL DAO         |       | File-based DAO  | <--> | Factory Pattern  |
+| Implementation    |       | Implementation  |      | getDAO()         |
++-------------------+       +-----------------+      +------------------+
+          |                         |
+          v                         v
++-------------------+       +-----------------+
+| MySQL             |       | Filesystem      |
+| Database          |       | Storage         |
++-------------------+       +-----------------+
+```
+
+### Performance Improvements
+
+The DAO implementation includes several performance optimizations:
+
+1. **O(1) Access Time**: File-based DAO uses indexed access instead of linear search
+2. **Connection Pooling**: MySQL DAO implements connection pooling to reduce overhead
+3. **Atomic Updates**: File operations use temporary files for atomic updates
+4. **Caching**: Frequently accessed data is cached to reduce I/O operations
+5. **Optimized Queries**: MySQL operations use prepared statements and optimized queries
+├── db_unified_config.h # Shared database configuration
+└── db_config.h       # Compatibility layer
+
+backend/database/
+├── mysql_dao.c      # MySQL implementation of DAO interface
+├── file_based_dao.c # File-based implementation of DAO interface
+└── dao_factory.c    # Factory for creating appropriate DAO instances
+```
+
+### Using the DAO Pattern
+```c
+// Get the DAO instance
+DatabaseAccessObject* dao = getDAO();
+
+// Use DAO methods instead of direct database calls
+if (dao->doesCardExist(cardNumber)) {
+    float balance = dao->fetchBalance(cardNumber);
+    // Process balance...
+}
+```
+
+Example implementations are provided in `examples/transaction_processor_dao.c`
 
 ## Features ✨
 - **ATM Operations** 🏧:
@@ -70,12 +253,29 @@ graph TD
 - Web server (Apache/Nginx)
 
 ### Database Setup 🗄️
-1. **For Linux**:
+1. **MySQL Configuration**:
+   Use the provided setup scripts to check for MySQL and configure the database:
    ```bash
-   ./initialize_db.sh
+   # For Linux
+   ./setup_mysql.sh
+   
+   # For Windows
+   setup_mysql.bat
    ```
-2. **For Windows**:
-   ```cmd
+   
+   These scripts will:
+   - Check if MySQL is installed and running
+   - Create the database and required user
+   - Import the schema if available
+   - Offer build options with or without MySQL
+   
+2. **Manual Setup**:
+   If you prefer manual setup, use these scripts:
+   ```bash
+   # For Linux
+   ./initialize_db.sh
+   
+   # For Windows
    initialize_db.bat
    ```
 
@@ -104,6 +304,19 @@ graph TD
    Edit `frontend/mobile/flutter_app/lib/config/config.dart` with your API endpoints.
 
 ## Running the Application 🚀
+- **Database Setup**:
+  ```bash
+  # Verify MySQL is running
+  # For Windows
+  Get-Service -Name *mysql*
+  
+  # Build with MySQL support
+  mingw32-make all
+  
+  # Or build without MySQL (uses stub implementation)
+  mingw32-make all CFLAGS+="-DNO_MYSQL"
+  ```
+
 - **C Backend**:
   ```bash
   cd bin
