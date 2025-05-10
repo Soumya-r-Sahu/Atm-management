@@ -14,8 +14,8 @@
 #include "../../include/common/database/card_account_management.h"
 #include "../../include/common/utils/logger.h"
 #include "../../include/common/reporting/transaction_reports.h"
-#include "menu_utils.h"
-#include "cbs_admin_menu.h"
+#include "../../include/frontend/cli/menu_utils.h"
+#include "../../include/frontend/menus/cbs_admin_menu.h"
 
 // Local function prototypes
 static void displayCBSAdminMenu(void);

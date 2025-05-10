@@ -8,8 +8,8 @@
 
 /**
  * @brief Run the transaction menu
- * @param cardNumber Customer card number
+ * @param username Customer username
  */
-void runTransactionMenu(int cardNumber);
+void runTransactionMenu(const char *username);
 
 #endif /* TRANSACTION_MENU_H */

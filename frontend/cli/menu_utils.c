@@ -11,7 +11,7 @@
 #include <ctype.h>
 #include <termios.h>
 #include <unistd.h>
-#include "menu_utils.h"
+#include "../../include/frontend/cli/menu_utils.h"
 
 #define SCREEN_WIDTH 80
 

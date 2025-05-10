@@ -10,19 +10,34 @@
 #include <unistd.h>
 #include "../../include/common/utils/logger.h"
 #include "../../include/common/database/database.h"
-#include "menu_utils.h"
-#include "customer_menu.h"
+#include "../../include/frontend/cli/menu_utils.h"
+#include "../../include/frontend/menus/customer_menu.h"
+#include "../../include/frontend/menus/menu_system.h"
 
-// Function prototypes
-void displayCustomerMenu(const char *username, int userType);
-void handleCustomerMenuChoice(int choice, const char *username, int userType);
-void viewAccountDetails(const char *username);
-void viewTransactionHistory(const char *username);
-void transferFunds(const char *username);
-void payBill(const char *username);
-void changePin(const char *username);
-void viewBeneficiaries(const char *username);
-void addBeneficiary(const char *username);
+/**
+ * @brief Display the customer menu
+ * @param username Customer username
+ * @param userType User type (1 = Regular Customer, 3 = Premium Customer)
+ */
+static void displayCustomerMenu(const char *username, int userType) {
+    char title[100];
+    sprintf(title, "CUSTOMER MENU - %s", username);
+    printHeader(title);
+    
+    printf("\n");
+    printf("1. Account Management\n");
+    printf("2. Transaction Management\n");
+    printf("3. Beneficiary Management\n");
+    printf("4. Logout\n");
+    
+    if (userType == USER_CUSTOMER_PREMIUM) { // Premium Customer
+        printf("\n");
+        printInfo("Premium Customer Features:");
+        printf("- Higher transaction limits\n");
+        printf("- Priority customer support\n");
+        printf("- Reduced transaction fees\n");
+    }
+}
 
 /**
  * @brief Run the customer menu
@@ -37,7 +52,7 @@ void runCustomerMenu(const char *username, int userType) {
         displayCustomerMenu(username, userType);
         
         int choice;
-        printf("\nEnter your choice (1-8): ");
+        printf("\nEnter your choice (1-4): ");
         if (scanf("%d", &choice) != 1) {
             // Clear input buffer
             int c;
@@ -51,83 +66,29 @@ void runCustomerMenu(const char *username, int userType) {
         int c;
         while ((c = getchar()) != '\n' && c != EOF);
         
-        if (choice == 8) {
-            running = false;
-        } else {
-            handleCustomerMenuChoice(choice, username, userType);
+        switch (choice) {
+            case 1: // Account Management
+                runAccountMenu(username);
+                break;
+                
+            case 2: // Transaction Management
+                runTransactionMenu(username);
+                break;
+                
+            case 3: // Beneficiary Management
+                runBeneficiaryMenu(username);
+                break;
+                
+            case 4: // Logout
+                running = false;
+                LOG_INFO("User %s logged out", username);
+                break;
+                
+            default:
+                printf("Invalid choice. Please try again.\n");
+                sleep(2);
+                break;
         }
-    }
-}
-
-/**
- * @brief Display the customer menu
- * @param username Customer username
- * @param userType User type (1 = Regular Customer, 3 = Premium Customer)
- */
-void displayCustomerMenu(const char *username, int userType) {
-    char title[100];
-    sprintf(title, "CUSTOMER MENU - %s", username);
-    printHeader(title);
-    
-    printf("\n");
-    printf("1. View Account Details\n");
-    printf("2. View Transaction History\n");
-    printf("3. Transfer Funds\n");
-    printf("4. Pay Bill\n");
-    printf("5. Change PIN\n");
-    printf("6. View Beneficiaries\n");
-    printf("7. Add Beneficiary\n");
-    printf("8. Logout\n");
-    
-    if (userType == 3) { // Premium Customer
-        printf("\n");
-        printInfo("Premium Customer Features:");
-        printf("- Higher transaction limits\n");
-        printf("- Priority customer support\n");
-        printf("- Reduced transaction fees\n");
-    }
-}
-
-/**
- * @brief Handle customer menu choice
- * @param choice User's choice
- * @param username Customer username
- * @param userType User type (1 = Regular Customer, 3 = Premium Customer)
- */
-void handleCustomerMenuChoice(int choice, const char *username, int userType) {
-    switch (choice) {
-        case 1: // View Account Details
-            viewAccountDetails(username);
-            break;
-            
-        case 2: // View Transaction History
-            viewTransactionHistory(username);
-            break;
-            
-        case 3: // Transfer Funds
-            transferFunds(username);
-            break;
-            
-        case 4: // Pay Bill
-            payBill(username);
-            break;
-            
-        case 5: // Change PIN
-            changePin(username);
-            break;
-            
-        case 6: // View Beneficiaries
-            viewBeneficiaries(username);
-            break;
-            
-        case 7: // Add Beneficiary
-            addBeneficiary(username);
-            break;
-            
-        default:
-            printf("Invalid choice. Please try again.\n");
-            sleep(2);
-            break;
     }
 }
 

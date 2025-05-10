@@ -12,11 +12,12 @@
 #include "../../include/common/database/database.h"
 #include "../../include/atm/atm_main.h"
 #include "../../include/common/database/card_account_management.h"
-#include "menu_utils.h"
-#include "customer_menu.h"
-#include "admin_menu.h"
-#include "transaction_menu.h"
-#include "cbs_admin_menu.h"
+#include "../../include/frontend/cli/menu_utils.h"
+#include "../../include/frontend/menus/menu_system.h"
+#include "../../include/frontend/menus/customer_menu.h"
+#include "../../include/frontend/menus/admin_menu.h"
+#include "../../include/frontend/menus/transaction_menu.h"
+#include "../../include/frontend/menus/cbs_admin_menu.h"
 
 // Function prototypes
 void displayMainMenu(void);

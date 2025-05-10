@@ -13,8 +13,8 @@
 #include "../../include/common/database/core_banking_interface.h"
 #include "../../include/atm/transaction/transaction_processor.h"
 #include "../../include/common/utils/logger.h"
-#include "menu_utils.h"
-#include "transaction_menu.h"
+#include "../../include/frontend/cli/menu_utils.h"
+#include "../../include/frontend/menus/transaction_menu.h"
 
 // Function prototypes
 void displayTransactionMenu(const char *cardNumber);
