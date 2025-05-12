@@ -1,0 +1,50 @@
+{
+  "database": {
+    "host": "localhost",
+    "port": 3306,
+    "name": "cbs_db",
+    "user": "cbs_user",
+    "password": "secure_password"
+  },
+  "api": {
+    "rest_port": 8080,
+    "soap_port": 8081,
+    "max_connections": 100,
+    "timeout_seconds": 30,
+    "ssl_enabled": true,
+    "ssl_cert_path": "/path/to/cert.pem",
+    "ssl_key_path": "/path/to/key.pem"
+  },
+  "logging": {
+    "level": "INFO",
+    "file_path": "logs/cbs_system.log",
+    "max_file_size_mb": 10,
+    "max_files": 10,
+    "console_output": true
+  },
+  "security": {
+    "token_expiry_minutes": 60,
+    "password_policy": {
+      "min_length": 8,
+      "require_uppercase": true,
+      "require_lowercase": true,
+      "require_digits": true,
+      "require_special": true
+    },
+    "max_login_attempts": 5,
+    "lockout_time_minutes": 30
+  },
+  "transaction": {
+    "default_currency": "USD",
+    "default_daily_limit": 5000,
+    "default_single_limit": 1000,
+    "prevent_duplicate_window_seconds": 60,
+    "require_2fa_above_amount": 1000
+  },
+  "system": {
+    "temp_directory": "data/temp",
+    "timezone": "UTC",
+    "startup_mode": "normal",
+    "maintenance_window": "01:00-03:00"
+  }
+}

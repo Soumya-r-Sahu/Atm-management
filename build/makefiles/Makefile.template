@@ -1,0 +1,104 @@
+# CBS Project Makefile Template
+# Copy this to build/makefiles/Makefile after reorganization
+
+# Directories
+ROOT_DIR := $(CURDIR)/../..
+SRC_DIR := $(ROOT_DIR)
+OBJ_DIR := $(ROOT_DIR)/obj
+BIN_DIR := $(ROOT_DIR)/bin
+LOG_DIR := $(ROOT_DIR)/logs
+
+# Choose build type (debug, release, or test)
+BUILD_TYPE ?= debug
+
+ifeq ($(BUILD_TYPE),release)
+	BIN_OUTPUT := $(BIN_DIR)/production
+	CFLAGS += -O2
+else ifeq ($(BUILD_TYPE),test)
+	BIN_OUTPUT := $(BIN_DIR)/testing
+	CFLAGS += -g -DENABLE_TESTS
+else
+	BIN_OUTPUT := $(BIN_DIR)/debug
+	CFLAGS += -g -DDEBUG
+endif
+
+# Target executable
+TARGET := $(BIN_OUTPUT)/cbs_system
+
+# Include directories
+INCLUDES := -I$(SRC_DIR) \
+           -I$(SRC_DIR)/backend/database/common/include \
+           -I$(SRC_DIR)/backend/database/mysql/include \
+           -I$(SRC_DIR)/backend/database/file_based/include
+
+# Source files
+DATABASE_COMMON_SRC := $(wildcard $(SRC_DIR)/backend/database/common/src/*.c)
+DATABASE_MYSQL_SRC := $(wildcard $(SRC_DIR)/backend/database/mysql/src/*.c)
+DATABASE_FILE_SRC := $(wildcard $(SRC_DIR)/backend/database/file_based/src/*.c)
+
+# Determine which database implementation to use
+DB_IMPL ?= mysql
+ifeq ($(DB_IMPL),mysql)
+	DATABASE_SRC := $(DATABASE_COMMON_SRC) $(DATABASE_MYSQL_SRC)
+	CFLAGS += -DUSE_MYSQL_DB
+else
+	DATABASE_SRC := $(DATABASE_COMMON_SRC) $(DATABASE_FILE_SRC)
+	CFLAGS += -DUSE_FILE_BASED_DB
+endif
+
+# All source files
+SRCS := $(wildcard $(SRC_DIR)/*.c) \
+        $(wildcard $(SRC_DIR)/backend/*.c) \
+        $(DATABASE_SRC)
+
+# Object files
+OBJS := $(patsubst $(SRC_DIR)/%.c,$(OBJ_DIR)/%.o,$(SRCS))
+
+# Compiler and flags
+CC := gcc
+CFLAGS += -Wall -Werror $(INCLUDES)
+LDFLAGS :=
+LDLIBS :=
+
+ifeq ($(DB_IMPL),mysql)
+	LDLIBS += -lmysqlclient
+endif
+
+# Make sure the build directory exists
+$(shell mkdir -p $(BIN_OUTPUT))
+$(shell mkdir -p $(OBJ_DIR)/backend/database/common/src)
+$(shell mkdir -p $(OBJ_DIR)/backend/database/mysql/src)
+$(shell mkdir -p $(OBJ_DIR)/backend/database/file_based/src)
+
+# Default rule
+all: $(TARGET)
+
+# Compile C source files
+$(OBJ_DIR)/%.o: $(SRC_DIR)/%.c
+	@mkdir -p $(@D)
+	$(CC) $(CFLAGS) -c $< -o $@
+
+# Link the executable
+$(TARGET): $(OBJS)
+	@mkdir -p $(@D)
+	$(CC) $(LDFLAGS) -o $@ $^ $(LDLIBS)
+
+# Clean up
+clean:
+	rm -rf $(OBJ_DIR)/*
+	rm -f $(BIN_DIR)/production/cbs_system
+	rm -f $(BIN_DIR)/testing/cbs_system
+	rm -f $(BIN_DIR)/debug/cbs_system
+
+# Create log directories
+create_log_dirs:
+	mkdir -p $(LOG_DIR)/transactions
+	mkdir -p $(LOG_DIR)/security
+	mkdir -p $(LOG_DIR)/errors
+	mkdir -p $(LOG_DIR)/audit
+
+# Run the program (debug build)
+run: $(TARGET) create_log_dirs
+	$(TARGET)
+
+.PHONY: all clean create_log_dirs run

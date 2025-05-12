@@ -1,0 +1,214 @@
+# CBS Project Master Makefile
+# Updated for the new directory structure
+
+# Compiler and flags
+CC = gcc
+CFLAGS = -Wall -Wextra -g
+LDFLAGS = 
+
+# Check if MySQL is available and add appropriate flags
+MYSQL_CONFIG := $(shell where mysql_config 2>NUL)
+
+# Check for MySQL in XAMPP
+XAMPP_MYSQL := $(shell if exist "C:\xampp\mysql\bin\mysql.exe" (echo true) else (echo false))
+
+# Allow overriding with NO_MYSQL flag
+ifeq ($(findstring -DNO_MYSQL,$(CFLAGS)),)
+    # NO_MYSQL not specified, check for MySQL
+    ifdef MYSQL_CONFIG
+        MYSQL_CFLAGS := $(shell mysql_config --cflags)
+        MYSQL_LDFLAGS := $(shell mysql_config --libs)
+        CFLAGS += $(MYSQL_CFLAGS) -DHAVE_MYSQL
+        LDFLAGS += $(MYSQL_LDFLAGS)
+    else ifeq ($(XAMPP_MYSQL),true)`
+        # Use XAMPP MySQL
+        CFLAGS += -I"C:/xampp/mysql/include" -DHAVE_MYSQL
+        LDFLAGS += -L"C:/xampp/mysql/lib" -lmysql
+    else
+        # MySQL not found, use stub implementation
+        CFLAGS += -DNO_MYSQL
+    endif
+endif
+
+# Project directories - Updated for new structure
+PROJECT_ROOT = .
+INCLUDE_DIR = $(PROJECT_ROOT)/include
+
+# New directory structure
+APP_DIR = $(PROJECT_ROOT)/app
+APP_BIN_DIR = $(APP_DIR)/bin
+APP_LIB_DIR = $(APP_DIR)/lib
+APP_CONFIG_DIR = $(APP_DIR)/config
+APP_LOGS_DIR = $(APP_DIR)/logs
+APP_MODELS_DIR = $(APP_DIR)/models
+
+ADMIN_PANEL_DIR = $(PROJECT_ROOT)/admin_panel
+DATABASE_DIR = $(PROJECT_ROOT)/database
+TRANSACTIONS_DIR = $(PROJECT_ROOT)/transactions
+INTEGRATION_DIR = $(PROJECT_ROOT)/integration
+SECURITY_DIR = $(PROJECT_ROOT)/security
+MONITORING_DIR = $(PROJECT_ROOT)/monitoring
+SCRIPTS_DIR = $(PROJECT_ROOT)/scripts
+GUI_DIR = $(PROJECT_ROOT)/gui
+UPI_DIR = $(PROJECT_ROOT)/upi
+UTILS_DIR = $(PROJECT_ROOT)/utils
+
+# For compatibility with existing code
+BACKEND_DIR = $(PROJECT_ROOT)/backend
+FRONTEND_DIR = $(PROJECT_ROOT)/frontend
+C_BACKEND_DIR = $(BACKEND_DIR)/c_backend
+C_BACKEND_SRC = $(C_BACKEND_DIR)/src
+C_BACKEND_INCLUDE = $(C_BACKEND_DIR)/include
+FRONTEND_CLI_DIR = $(FRONTEND_DIR)/cli
+BIN_DIR = $(PROJECT_ROOT)/bin
+DATA_DIR = $(PROJECT_ROOT)/data
+LOGS_DIR = $(PROJECT_ROOT)/logs
+TESTS_DIR = $(PROJECT_ROOT)/tests
+
+# Include directories - Updated for new structure
+INCLUDES = -I$(INCLUDE_DIR) \
+           -I$(INCLUDE_DIR)/admin \
+           -I$(INCLUDE_DIR)/atm \
+           -I$(INCLUDE_DIR)/common \
+           -I$(APP_CONFIG_DIR) \
+           -I$(APP_LIB_DIR) \
+           -I$(UTILS_DIR) \
+           -I$(SECURITY_DIR)/middleware
+
+# Source files - Updated for new structure
+APP_SRCS = $(wildcard $(APP_BIN_DIR)/*.c) \
+           $(wildcard $(APP_LIB_DIR)/*.c) \
+           $(wildcard $(APP_CONFIG_DIR)/*.c)
+
+ADMIN_PANEL_SRCS = $(wildcard $(ADMIN_PANEL_DIR)/*.c)
+DATABASE_SRCS = $(wildcard $(DATABASE_DIR)/*.c)
+TRANSACTIONS_SRCS = $(wildcard $(TRANSACTIONS_DIR)/*.c)
+SECURITY_SRCS = $(wildcard $(SECURITY_DIR)/middleware/*.c)
+GUI_SRCS = $(wildcard $(GUI_DIR)/*.c)
+UTILS_SRCS = $(wildcard $(UTILS_DIR)/*.c)
+
+# For backward compatibility
+BACKEND_SRCS = $(wildcard $(BACKEND_DIR)/*.c) \
+               $(wildcard $(C_BACKEND_SRC)/common/*.c) \
+               $(wildcard $(C_BACKEND_SRC)/common/database/*.c) \
+               $(wildcard $(C_BACKEND_SRC)/common/transaction/*.c)
+
+FRONTEND_SRCS = $(wildcard $(FRONTEND_DIR)/*.c) \
+                $(wildcard $(FRONTEND_CLI_DIR)/*.c)
+
+# Object files
+APP_OBJS = $(patsubst %.c,%.o,$(APP_SRCS))
+ADMIN_PANEL_OBJS = $(patsubst %.c,%.o,$(ADMIN_PANEL_SRCS))
+DATABASE_OBJS = $(patsubst %.c,%.o,$(DATABASE_SRCS))
+TRANSACTIONS_OBJS = $(patsubst %.c,%.o,$(TRANSACTIONS_SRCS))
+SECURITY_OBJS = $(patsubst %.c,%.o,$(SECURITY_SRCS))
+GUI_OBJS = $(patsubst %.c,%.o,$(GUI_SRCS))
+UTILS_OBJS = $(patsubst %.c,%.o,$(UTILS_SRCS))
+BACKEND_OBJS = $(patsubst %.c,%.o,$(BACKEND_SRCS))
+FRONTEND_OBJS = $(patsubst %.c,%.o,$(FRONTEND_SRCS))
+
+# All object files
+ALL_OBJS = $(APP_OBJS) \
+           $(ADMIN_PANEL_OBJS) \
+           $(DATABASE_OBJS) \
+           $(TRANSACTIONS_OBJS) \
+           $(SECURITY_OBJS) \
+           $(GUI_OBJS) \
+           $(UTILS_OBJS) \
+           $(BACKEND_OBJS) \
+           $(FRONTEND_OBJS)
+
+# Main targets
+.PHONY: all clean backend frontend cli admin atm verify_organization help
+
+all: create_dirs backend frontend cli admin atm
+
+# Create required directories
+create_dirs:
+	@mkdir -p $(BIN_DIR) $(LOGS_DIR) $(DATA_DIR)/temp
+
+# Build rules
+%.o: %.c
+	$(CC) $(CFLAGS) $(INCLUDES) -c $< -o $@
+
+# Backend components
+backend: $(BACKEND_OBJS) $(DATABASE_OBJS) $(TRANSACTIONS_OBJS) $(SECURITY_OBJS) $(UTILS_OBJS)
+	@echo Building backend components...
+
+# Frontend components
+frontend: $(FRONTEND_OBJS) $(GUI_OBJS) $(ADMIN_PANEL_OBJS)
+	@echo Building frontend components...
+
+# CLI application
+cli: backend frontend $(APP_OBJS)
+	@echo Building CLI application...
+	$(CC) $(CFLAGS) $(INCLUDES) -o $(BIN_DIR)/cbs_system.exe $(APP_BIN_DIR)/main.c $(ALL_OBJS) $(LDFLAGS)
+
+# Admin application
+admin: backend frontend
+	@echo Building admin application...
+	$(CC) $(CFLAGS) $(INCLUDES) -o $(BIN_DIR)/admin_system.exe $(ADMIN_PANEL_DIR)/admin_menu.c $(ALL_OBJS) $(LDFLAGS)
+
+# ATM application
+atm: backend frontend
+	@echo Building ATM application...
+	$(CC) $(CFLAGS) $(INCLUDES) -o $(BIN_DIR)/atm_system.exe $(GUI_DIR)/atm_ui.c $(ALL_OBJS) $(LDFLAGS)
+
+# Tests
+.PHONY: test unit_tests integration_tests e2e_tests
+
+test: unit_tests integration_tests e2e_tests
+
+unit_tests:
+	@echo Running unit tests...
+	@cd $(TESTS_DIR) && powershell -ExecutionPolicy Bypass -File run_tests.ps1 unit
+
+integration_tests:
+	@echo Running integration tests...
+	@cd $(TESTS_DIR) && powershell -ExecutionPolicy Bypass -File run_tests.ps1 integration
+
+e2e_tests:
+	@echo Running end-to-end tests...
+	@cd $(TESTS_DIR) && powershell -ExecutionPolicy Bypass -File run_tests.ps1 e2e
+
+# Verify code organization
+verify_organization:
+	@echo Verifying code organization...
+	@powershell -ExecutionPolicy Bypass -File verify_migration.ps1
+
+# Clean up
+clean:
+	@echo Cleaning up...
+	@rm -f $(BIN_DIR)/*.exe $(BIN_DIR)/*.o
+	@rm -f $(APP_DIR)/**/*.o
+	@rm -f $(ADMIN_PANEL_DIR)/*.o
+	@rm -f $(DATABASE_DIR)/*.o
+	@rm -f $(TRANSACTIONS_DIR)/*.o
+	@rm -f $(SECURITY_DIR)/**/*.o
+	@rm -f $(GUI_DIR)/*.o
+	@rm -f $(UTILS_DIR)/*.o
+	@rm -f $(BACKEND_DIR)/**/*.o
+	@rm -f $(FRONTEND_DIR)/**/*.o
+
+# Help
+help:
+	@echo "CBS Project Build System"
+	@echo "======================="
+	@echo
+	@echo "Available targets:"
+	@echo "  all              - Build all components (default)"
+	@echo "  backend          - Build only backend components"
+	@echo "  frontend         - Build only frontend components"
+	@echo "  cli              - Build CLI application"
+	@echo "  admin            - Build admin application"
+	@echo "  atm              - Build ATM application"
+	@echo "  test             - Run all tests"
+	@echo "  unit_tests       - Run unit tests"
+	@echo "  integration_tests - Run integration tests"
+	@echo "  e2e_tests        - Run end-to-end tests"
+	@echo "  clean            - Clean up build artifacts"
+	@echo "  verify_organization - Verify code organization"
+	@echo "  help             - Show this help message"
+	@echo
+	@echo "Options:"
+	@echo "  CFLAGS+=-DNO_MYSQL  - Build without MySQL support (using file-based storage)"

@@ -27,14 +27,29 @@ mingw32-make verify_organization
 
 ## Project Structure 🗂️
 ```
-Atm-management/
-├── backend/          # Backend implementation
-├── frontend/         # Frontend interfaces
-├── setup/            # Setup scripts and database schema
-├── data/             # Data files
-├── logs/             # Log files
-├── docs/             # Documentation
-└── Makefile          # Build configuration
+/app/                    # Core application package
+│   ├── bin/             # CLI entry points, management scripts
+│   ├── lib/             # Shared modules, utilities
+│   ├── config/          # Configuration files (JSON/YAML)
+│   ├── logs/            # Application logs
+│   └── models/          # Data models
+├── admin_panel/         # Administrative interface
+├── database/            # Database related files
+│   ├── migrations/      # Database migration scripts
+│   ├── backups/         # Database backups
+│   └── logs/            # Database logs
+├── transactions/        # Transaction processing
+│   ├── inbound/         # Incoming transaction files
+│   └── outbound/        # Outgoing transaction files
+├── integration/         # External system integrations
+├── security/            # Security components
+│   └── middleware/      # Security middlewares
+├── monitoring/          # System monitoring
+├── scripts/             # Maintenance and deployment
+├── tests/               # Test suites
+├── gui/                 # User interfaces
+├── upi/                 # UPI payment services
+└── utils/               # Utilities
 ```
 
 ## DAO Pattern Implementation 🧩
@@ -356,3 +371,115 @@ graph TD
 
 ## License 📜
 [Your License]
+
+
+# Core Banking System (CBS) Project 🚀
+
+## Overview 🌟
+This project is a comprehensive Core Banking System with a clear separation of components. The system includes:
+- **Core Banking Functionality** 🏦
+- **CLI Interface** 🖥️
+- **Web Interface** 🌐 (HTML, CSS, PHP)
+- **Mobile Application** 📱 (Flutter)
+
+## Documentation 📚
+For comprehensive project documentation, see:
+- [Documentation Index](./docs/README.md) - Starting point for all documentation
+- [Project Documentation](./docs/CBS_PROJECT_DOCUMENTATION.md) - Complete system overview
+- [Function Reference](./docs/CBS_FUNCTION_REFERENCE.md) - Detailed API documentation
+- [Logging Guide](./docs/CBS_LOGGING_GUIDE.md) - Guide to logging system usage
+- [Build Guide](./docs/CBS_BUILD_GUIDE.md) - Step-by-step build instructions
+- [Testing Plan](./docs/CBS_TESTING_PLAN.md) - Comprehensive testing strategy
+- [Reorganization Guide](./REORGANIZATION_GUIDE.md) - Guide to the new directory structure
+
+## Build Information 🛠️
+This project has been reorganized to ensure proper separation of components.
+
+### Quick Start
+```bash
+# Standard build with MySQL
+make all
+
+# MySQL-less build
+make all CFLAGS+="-DNO_MYSQL"
+
+# Verify code organization
+make verify_organization
+```
+
+## Project Structure 🗂️
+```
+/app/                    # Core application package
+│   ├── bin/             # CLI entry points, management scripts
+│   ├── lib/             # Shared modules, utilities
+│   ├── config/          # Configuration files (JSON/YAML)
+│   ├── logs/            # Application logs
+│   └── models/          # Data models
+├── admin_panel/         # Administrative interface
+├── database/            # Database related files
+│   ├── migrations/      # Database migration scripts
+│   ├── backups/         # Database backups
+│   └── logs/            # Database logs
+├── transactions/        # Transaction processing
+│   ├── inbound/         # Incoming transaction files
+│   └── outbound/        # Outgoing transaction files
+├── integration/         # External system integrations
+├── security/            # Security components
+│   └── middleware/      # Security middlewares
+├── monitoring/          # System monitoring
+├── scripts/             # Maintenance and deployment
+├── tests/               # Test suites
+├── gui/                 # User interfaces
+├── upi/                 # UPI payment services
+└── utils/               # Utilities
+```
+
+## DAO Pattern Implementation 🧩
+The project uses a Database Access Object (DAO) pattern to abstract database operations. This provides:
+
+- **Storage Agnosticism**: Same code works with both MySQL and file-based storage
+- **Improved Testability**: Easy to mock database interactions for testing
+- **Enhanced Maintainability**: Database operations centralized in one layer
+- **Better Performance**: Optimized with connection pooling and O(1) operations
+
+## Migration Process 🔄
+The project has undergone a significant reorganization to improve its structure and maintainability. The migration process included:
+
+1. Creating a detailed migration plan
+2. Executing the migration using automated scripts
+3. Verifying the migration with a comprehensive verification script
+4. Updating the build system to work with the new structure
+
+For more details on the reorganization, see the [Reorganization Guide](./REORGANIZATION_GUIDE.md).
+
+## Features 🔥
+
+### Core Banking Features
+- Account management
+- Transaction processing
+- Bill payments
+- Funds transfers
+- ATM services
+- UPI payments
+- Loan management
+- Customer management
+
+### Security Features
+- Secure authentication
+- Transaction encryption
+- Audit logging
+- Role-based access control
+- Secure password management
+
+### Administrative Features
+- User management
+- System configuration
+- Reporting and analytics
+- Transaction monitoring
+- Account administration
+
+## Contributing 🤝
+Contributions are welcome! Please see [CONTRIBUTING.md](./CONTRIBUTING.md) for guidelines.
+
+## License 📝
+This project is licensed under the MIT License - see the [LICENSE](./LICENSE) file for details.
